@@ -1,0 +1,144 @@
+<!doctype html>
+<!-- Served without a PIN session (see middleware.js), so it holds nothing private:
+     no app code, no shop data. It only posts the PIN to /api/auth. -->
+<html lang="hi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f5f3ff" />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Kirana Bill · Locked</title>
+    <style>
+      :root {
+        --bg: #f5f3ff;
+        --card: #ffffff;
+        --text: #18181b;
+        --muted: #71717a;
+        --line: #e4e4e7;
+        --brand: #7c3aed;
+        --brand-2: #4f46e5;
+        --error: #e11d48;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: radial-gradient(circle at 20% 10%, #ddd6fe 0, transparent 45%),
+          radial-gradient(circle at 90% 80%, #e0e7ff 0, transparent 45%), var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .card {
+        width: 100%;
+        max-width: 360px;
+        background: var(--card);
+        border-radius: 28px;
+        padding: 32px 24px 24px;
+        box-shadow: 0 20px 60px -20px rgb(76 29 149 / 0.35);
+        text-align: center;
+      }
+      .badge {
+        width: 64px;
+        height: 64px;
+        margin: 0 auto 16px;
+        border-radius: 20px;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        background: linear-gradient(135deg, var(--brand), var(--brand-2));
+        box-shadow: 0 12px 30px -10px rgb(124 58 237 / 0.6);
+      }
+      h1 { margin: 0; font-size: 22px; }
+      p.sub { margin: 6px 0 24px; color: var(--muted); font-size: 14px; }
+      input {
+        width: 100%;
+        padding: 14px;
+        font-size: 28px;
+        letter-spacing: 0.5em;
+        text-align: center;
+        border: 2px solid var(--line);
+        border-radius: 16px;
+        outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      input:focus { border-color: var(--brand); box-shadow: 0 0 0 4px rgb(124 58 237 / 0.15); }
+      input.bad { border-color: var(--error); animation: shake 0.35s; }
+      button {
+        width: 100%;
+        margin-top: 16px;
+        padding: 15px;
+        font-size: 16px;
+        font-weight: 700;
+        color: #fff;
+        border: 0;
+        border-radius: 16px;
+        background: linear-gradient(90deg, var(--brand), var(--brand-2));
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.5; cursor: default; }
+      .error { min-height: 20px; margin: 12px 0 0; color: var(--error); font-size: 14px; font-weight: 600; }
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-8px); }
+        75% { transform: translateX(8px); }
+      }
+    </style>
+  </head>
+  <body>
+    <form class="card" id="form" autocomplete="off">
+      <div class="badge" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" />
+        </svg>
+      </div>
+      <h1>Kirana Bill</h1>
+      <p class="sub">Aage badhne ke liye PIN daalein</p>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="12" aria-label="PIN" autofocus required />
+      <button id="go" type="submit">Unlock</button>
+      <p class="error" id="error" role="alert"></p>
+    </form>
+    <script>
+      const form = document.getElementById('form')
+      const pin = document.getElementById('pin')
+      const go = document.getElementById('go')
+      const error = document.getElementById('error')
+      // Only same-site paths, so ?next= can't bounce people to another website
+      const raw = new URLSearchParams(location.search).get('next') || '/'
+      const nextPath = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/'
+
+      pin.addEventListener('input', () => {
+        pin.classList.remove('bad')
+        error.textContent = ''
+      })
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault()
+        if (!pin.value.trim()) return
+        go.disabled = true
+        go.textContent = 'Check ho raha hai…'
+        try {
+          const res = await fetch('/api/auth', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ pin: pin.value }),
+          })
+          const data = await res.json().catch(() => ({}))
+          if (res.ok) return location.replace(nextPath)
+          error.textContent = data.error || 'Unlock nahi ho paya'
+        } catch {
+          error.textContent = 'Internet check karein'
+        }
+        pin.classList.add('bad')
+        pin.value = ''
+        pin.focus()
+        go.disabled = false
+        go.textContent = 'Unlock'
+      })
+    </script>
+  </body>
+</html>

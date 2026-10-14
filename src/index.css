@@ -1,0 +1,86 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mont: 'Montserrat', ui-sans-serif, system-ui, sans-serif;
+  --font-pt: 'PT Serif', ui-serif, Georgia, serif;
+
+  --animate-blob: blob 18s ease-in-out infinite;
+
+  @keyframes blob {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    33% {
+      transform: translate(40px, -30px) scale(1.1);
+    }
+    66% {
+      transform: translate(-30px, 20px) scale(0.95);
+    }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-zinc-50 text-zinc-900 antialiased;
+  }
+  input,
+  select,
+  textarea {
+    @apply text-base sm:text-sm;
+  }
+}
+
+@utility card {
+  @apply rounded-3xl border border-white/70 bg-white/80 shadow-[0_8px_30px_-12px_rgb(76_29_149/0.18)] backdrop-blur-xl;
+}
+@utility field-label {
+  @apply mb-1.5 block text-xs font-semibold tracking-wide text-zinc-500 uppercase;
+}
+@utility field {
+  @apply w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-zinc-900 transition outline-none placeholder:text-zinc-400 focus:border-violet-400 focus:ring-4 focus:ring-violet-500/15;
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition select-none disabled:pointer-events-none disabled:opacity-40;
+}
+@utility btn-primary {
+  @apply btn bg-linear-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/25 hover:from-violet-500 hover:to-indigo-500;
+}
+@utility btn-danger {
+  @apply btn bg-rose-600 text-white shadow-lg shadow-rose-600/25 hover:bg-rose-500;
+}
+@utility btn-ghost {
+  @apply btn border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50;
+}
+
+/* ---------- Print: only the bill goes on paper ---------- */
+/* Full-bleed: the invoice draws its own margins and corner shapes */
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  body {
+    background: white !important;
+  }
+  /* On screen the A4 sheet is scaled down to fit the phone; on paper it's 1:1 */
+  .bill-frame {
+    height: auto !important;
+  }
+  .bill-sheet {
+    transform: none !important;
+    width: 210mm !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  .bill-sheet,
+  .bill-sheet * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

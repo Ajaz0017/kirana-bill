@@ -1,0 +1,189 @@
+// POST /api/scan  { image: <base64>, mimeType: "image/jpeg" }  ->  { items, notes, billTotal, provider }
+// Reads a handwritten kirana bill with a vision model. Order: Gemini Flash -> Gemini Flash-Lite
+// (separate capacity, so often free when Flash is "high demand") -> Zhipu GLM-Flash if GLM_API_KEY is set.
+// Each model gets a time limit so one slow/overloaded model can't eat the whole request
+// (Vercel stops the function at 60s, see vercel.json).
+// Keys live only in server env vars (Vercel project settings / local .env).
+
+import { isAuthed } from './_auth.js'
+
+const PROMPT = `You read handwritten Indian kirana (grocery) bills. The writing mixes Hindi (Devanagari) and English/Hinglish.
+Extract every purchased line item.
+
+Rules:
+- name: write in Roman script (Hinglish), e.g. "दाल अरहर" -> "Daal Arhar", "चीनी" -> "Cheeni". Fix obvious spelling.
+- unit: one of kg, gm, ltr, ml, pcs, pkt, dozen, box. Default to the unit the rate is quoted in.
+- qty: quantity in that same unit. If the rate is per kg but qty is written as "250 gm" or "पाव", use 0.25 kg. "½"/"आधा" = 0.5, "सवा" = 1.25, "डेढ़" = 1.5, "ढाई" = 2.5.
+- rate: price per one unit (number only, no ₹). null if not written.
+- amount: line total (number only). If missing but qty and rate exist, use qty × rate.
+- Ignore crossed-out lines, the Total/Grand total line, dates, phone numbers and the shop header.
+- uncertain: true if any value was hard to read, guessed, or qty × rate does not match amount.
+- billTotal: the grand total written on the bill (number), or null if there is none. Do NOT add it as an item.
+- notes: short Hinglish notes about problems (e.g. "Item 3 ka rate saaf nahi hai"). Empty if none.
+Return only JSON.`
+
+const SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    items: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          name: { type: 'STRING' },
+          qty: { type: 'NUMBER', nullable: true },
+          unit: { type: 'STRING' },
+          rate: { type: 'NUMBER', nullable: true },
+          amount: { type: 'NUMBER', nullable: true },
+          uncertain: { type: 'BOOLEAN' },
+        },
+        required: ['name', 'unit', 'uncertain'],
+      },
+    },
+    billTotal: { type: 'NUMBER', nullable: true },
+    notes: { type: 'ARRAY', items: { type: 'STRING' } },
+  },
+  required: ['items'],
+}
+
+const MAX_BASE64 = 4_000_000 // Vercel caps request bodies at 4.5 MB
+const MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+class ScanError extends Error {
+  constructor(status, message) {
+    super(message)
+    this.status = status
+  }
+}
+
+const TOTAL_BUDGET_MS = 55_000
+const FIRST_MODEL_MS = 20_000 // the main Flash model is often slow when it's "high demand"
+const NEXT_MODEL_MS = 30_000
+
+// fetch that turns a timeout into a ScanError so the next model gets its turn
+async function post(url, init, timeoutMs, label) {
+  try {
+    return await fetch(url, { ...init, method: 'POST', signal: AbortSignal.timeout(timeoutMs) })
+  } catch (e) {
+    if (e.name === 'TimeoutError') throw new ScanError(504, `${label} ${timeoutMs / 1000}s mein jawab nahi aaya`)
+    throw new ScanError(502, `${label} tak nahi pahunch paye: ${e.message}`)
+  }
+}
+
+// No thinkingConfig: Flash-Lite rejects thinkingBudget, and it doesn't think by default anyway
+async function askGemini({ image, mimeType }, env, model, timeoutMs) {
+  const res = await post(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: mimeType, data: image } }] }],
+      generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: SCHEMA },
+    }),
+  }, timeoutMs, model)
+  if (!res.ok) throw new ScanError(res.status, `Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`)
+  const data = await res.json()
+  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('')
+  if (!text) throw new ScanError(502, `Gemini ne jawab nahi diya (${data.candidates?.[0]?.finishReason ?? 'empty'})`)
+  return text
+}
+
+// Zhipu / Z.ai speaks the OpenAI chat format
+async function askGlm({ image, mimeType }, env, timeoutMs) {
+  const base = env.GLM_BASE_URL || 'https://api.z.ai/api/paas/v4'
+  const res = await post(`${base}/chat/completions`, {
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${env.GLM_API_KEY}` },
+    body: JSON.stringify({
+      model: env.GLM_MODEL || 'glm-4.6v-flash',
+      temperature: 0,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${image}` } },
+            {
+              type: 'text',
+              text: `${PROMPT}\nJSON shape: {"items":[{"name":"","qty":0,"unit":"kg","rate":0,"amount":0,"uncertain":false}],"billTotal":0,"notes":[]}`,
+            },
+          ],
+        },
+      ],
+    }),
+  }, timeoutMs, 'GLM')
+  if (!res.ok) throw new ScanError(res.status, `GLM ${res.status}: ${(await res.text()).slice(0, 300)}`)
+  const data = await res.json()
+  return data.choices?.[0]?.message?.content ?? ''
+}
+
+// Models sometimes wrap JSON in prose or ``` fences
+function parseJson(text) {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start < 0 || end < start) throw new ScanError(502, 'AI ka jawab JSON nahi tha')
+  return JSON.parse(text.slice(start, end + 1))
+}
+
+const num = (v) => {
+  const n = typeof v === 'string' ? parseFloat(v.replace(/[^\d.]/g, '')) : v
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function clean(result) {
+  const items = (Array.isArray(result?.items) ? result.items : [])
+    .map((it) => ({
+      name: String(it?.name ?? '').trim(),
+      qty: num(it?.qty),
+      unit: String(it?.unit ?? '').trim().toLowerCase(),
+      rate: num(it?.rate),
+      amount: num(it?.amount),
+      uncertain: !!it?.uncertain,
+    }))
+    .filter((it) => it.name)
+  const notes = (Array.isArray(result?.notes) ? result.notes : []).map(String).filter(Boolean)
+  return { items, notes, billTotal: num(result?.billTotal) }
+}
+
+export async function scan(body, env) {
+  const { image, mimeType = 'image/jpeg' } = body ?? {}
+  if (typeof image !== 'string' || !image) throw new ScanError(400, 'Photo nahi mili')
+  if (image.length > MAX_BASE64) throw new ScanError(413, 'Photo bahut badi hai')
+  if (!MIME_TYPES.includes(mimeType)) throw new ScanError(415, 'Sirf JPG/PNG/WebP photo chalegi')
+  if (!env.GEMINI_API_KEY && !env.GLM_API_KEY) throw new ScanError(500, 'Server pe GEMINI_API_KEY set nahi hai')
+
+  const geminiModels = [...new Set([env.GEMINI_MODEL || 'gemini-flash-latest', env.GEMINI_FALLBACK_MODEL || 'gemini-flash-lite-latest'])]
+  const providers = [
+    ...(env.GEMINI_API_KEY ? geminiModels.map((m) => [m, (input, ms) => askGemini(input, env, m, ms)]) : []),
+    ...(env.GLM_API_KEY ? [[env.GLM_MODEL || 'glm', (input, ms) => askGlm(input, env, ms)]] : []),
+  ]
+
+  // Busy (503) / slow models are skipped rather than retried: the next model has its own capacity
+  const deadline = Date.now() + TOTAL_BUDGET_MS
+  const errors = []
+  for (const [i, [provider, ask]] of providers.entries()) {
+    const ms = Math.min(i === 0 ? FIRST_MODEL_MS : NEXT_MODEL_MS, deadline - Date.now())
+    if (ms < 3000) break
+    try {
+      return { ...clean(parseJson(await ask({ image, mimeType }, ms))), provider }
+    } catch (e) {
+      errors.push(e)
+      console.error(`[scan] ${provider} failed:`, e.message)
+      // A bad photo won't get better with another model
+      if (e.status === 400 && /image|inline_data/i.test(e.message)) break
+    }
+  }
+  if (errors.every((e) => e.status === 429)) throw new ScanError(429, 'Aaj ki free scan limit khatam ho gayi, thodi der baad try karein')
+  if (errors.some((e) => e.status === 503 || e.status === 504)) throw new ScanError(503, 'Google ka AI abhi bahut busy hai, 1–2 minute baad dobara try karein')
+  throw new ScanError(502, 'AI se bill nahi padha gaya, dobara try karein')
+}
+
+// Vercel Function (Web standard signature)
+export async function POST(request) {
+  // middleware.js already blocks locked browsers; checked again so the AI quota is never exposed
+  if (!(await isAuthed(request, process.env))) {
+    return Response.json({ error: 'PIN se unlock karein', locked: true }, { status: 401 })
+  }
+  try {
+    const body = await request.json().catch(() => null)
+    return Response.json(await scan(body, process.env))
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: e.status ?? 500 })
+  }
+}

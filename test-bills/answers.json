@@ -1,0 +1,167 @@
+{
+  "bill-1-aasan": {
+    "note": "Saaf Hinglish. Sab items bilkul sahi aane chahiye.",
+    "total": 1112,
+    "items": [
+      {
+        "name": "Atta",
+        "qty": 10,
+        "unit": "kg",
+        "rate": 38,
+        "amount": 380
+      },
+      {
+        "name": "Chawal",
+        "qty": 5,
+        "unit": "kg",
+        "rate": 52,
+        "amount": 260
+      },
+      {
+        "name": "Cheeni",
+        "qty": 2,
+        "unit": "kg",
+        "rate": 44,
+        "amount": 88
+      },
+      {
+        "name": "Sarson Tel",
+        "qty": 1,
+        "unit": "ltr",
+        "rate": 180,
+        "amount": 180
+      },
+      {
+        "name": "Maggi",
+        "qty": 6,
+        "unit": "pkt",
+        "rate": 14,
+        "amount": 84
+      },
+      {
+        "name": "Surf",
+        "qty": 1,
+        "unit": "pkt",
+        "rate": 120,
+        "amount": 120
+      }
+    ]
+  },
+  "bill-2-mix": {
+    "note": "Hindi + English mix. Saabun kata hua hai, use NAHI aana chahiye. Haldi 250 gm = 0.25 kg, Jeera 100 gm = 0.1 kg, Tel ½ = 0.5 ltr. \"कुल\" wali total line nahi aani chahiye.",
+    "total": 892,
+    "items": [
+      {
+        "name": "Daal Arhar",
+        "qty": 2,
+        "unit": "kg",
+        "rate": 144,
+        "amount": 288
+      },
+      {
+        "name": "Cheeni",
+        "qty": 5,
+        "unit": "kg",
+        "rate": 44,
+        "amount": 220
+      },
+      {
+        "name": "Basmati Chawal",
+        "qty": 1,
+        "unit": "kg",
+        "rate": 110,
+        "amount": 110
+      },
+      {
+        "name": "Haldi",
+        "qty": 0.25,
+        "unit": "kg",
+        "rate": 240,
+        "amount": 60
+      },
+      {
+        "name": "Jeera",
+        "qty": 0.1,
+        "unit": "kg",
+        "rate": 400,
+        "amount": 40
+      },
+      {
+        "name": "Anda",
+        "qty": 12,
+        "unit": "pcs",
+        "rate": 7,
+        "amount": 84
+      },
+      {
+        "name": "Sarson Tel",
+        "qty": 0.5,
+        "unit": "ltr",
+        "rate": 180,
+        "amount": 90
+      }
+    ]
+  },
+  "bill-3-mushkil": {
+    "note": "Lagbhag poori Devanagari, tirchhi aur dhundhli photo. पाव = 0.25 kg, आधा = 0.5 kg. Maggi mein galti jaan-boojh ke hai: 5 × 14 = 70, par 75 likha hai, to uncertain: true aana chahiye.",
+    "total": 2045,
+    "items": [
+      {
+        "name": "Atta",
+        "qty": 25,
+        "unit": "kg",
+        "rate": 33,
+        "amount": 825
+      },
+      {
+        "name": "Maida",
+        "qty": 2,
+        "unit": "kg",
+        "rate": 40,
+        "amount": 80
+      },
+      {
+        "name": "Besan",
+        "qty": 1,
+        "unit": "kg",
+        "rate": 90,
+        "amount": 90
+      },
+      {
+        "name": "Desi Ghee",
+        "qty": 1,
+        "unit": "kg",
+        "rate": 600,
+        "amount": 600
+      },
+      {
+        "name": "Paneer",
+        "qty": 0.25,
+        "unit": "kg",
+        "rate": 360,
+        "amount": 90
+      },
+      {
+        "name": "Chai Patti",
+        "qty": 0.5,
+        "unit": "kg",
+        "rate": 420,
+        "amount": 210
+      },
+      {
+        "name": "Maggi",
+        "qty": 5,
+        "unit": "pkt",
+        "rate": 14,
+        "amount": 75
+      },
+      {
+        "name": "Aloo",
+        "qty": 3,
+        "unit": "kg",
+        "rate": 25,
+        "amount": 75
+      }
+    ]
+  }
+}
