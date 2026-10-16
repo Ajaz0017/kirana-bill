@@ -3,9 +3,11 @@ import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa'
 
-// Same paths middleware.js's matcher leaves open on Vercel
-const PUBLIC_PATHS = ['/lock.html', '/api/auth', '/favicon.svg']
+// Same paths middleware.js's matcher leaves open on Vercel (exact paths, or prefixes ending in "/")
+const PUBLIC_PATHS = ['/lock.html', '/api/auth', '/favicon.svg', '/manifest.webmanifest', '/icons/', '/sw.js', '/registerSW.js']
+const isPublic = (path) => PUBLIC_PATHS.some((p) => (p.endsWith('/') ? path.startsWith(p) : path === p)) || path.startsWith('/workbox-')
 
 // Node req -> Web Request, so the Vercel files run unchanged
 async function toRequest(req) {
@@ -41,7 +43,7 @@ const vercelLocal = (env) => {
         const path = (req.originalUrl ?? req.url).split('?')[0]
         // A Node request body can be read only once, so build the Web Request once and clone it
         const request = await toRequest(req)
-        if (!PUBLIC_PATHS.includes(path)) {
+        if (!isPublic(path)) {
           const { default: middleware } = await load('/middleware.js')
           const gate = await middleware(request.clone())
           if (!gate.headers.get('x-middleware-next')) return send(res, gate)
@@ -66,7 +68,50 @@ const vercelLocal = (env) => {
   }
 }
 
+/**
+ * Installable app + offline manual mode.
+ * Pages always come from the network first, so middleware.js still checks the PIN when online;
+ * the cached copy is used only when the network fails (offline = "last unlock still counts").
+ * Redirected answers (the lock screen) are never cached as the app.
+ */
+const pwa = VitePWA({
+  registerType: 'autoUpdate',
+  manifest: {
+    name: 'Kirana Bill',
+    short_name: 'Kirana Bill',
+    description: 'Bill of Supply, seconds mein. Handwritten bill scan karke items bharein.',
+    lang: 'hi',
+    start_url: '/',
+    scope: '/',
+    display: 'standalone',
+    orientation: 'portrait',
+    theme_color: '#7c3aed',
+    background_color: '#f5f3ff',
+    icons: [
+      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { src: '/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+  },
+  workbox: {
+    globPatterns: ['**/*.{js,css,woff2,png,jpg,svg}'],
+    globIgnores: ['**/index.html', '**/lock.html'],
+    navigateFallback: null,
+    cleanupOutdatedCaches: true,
+    runtimeCaching: [
+      {
+        urlPattern: ({ request }) => request.mode === 'navigate',
+        handler: 'NetworkFirst', // no timeout on purpose: a slow network must not skip the PIN check
+        options: {
+          cacheName: 'pages',
+          plugins: [{ cacheWillUpdate: async ({ response }) => (response?.ok && !response.redirected ? response : null) }],
+        },
+      },
+    ],
+  },
+})
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), tailwindcss(), vercelLocal(loadEnv(mode, process.cwd(), ''))],
+  plugins: [react(), tailwindcss(), vercelLocal(loadEnv(mode, process.cwd(), '')), pwa],
 }))

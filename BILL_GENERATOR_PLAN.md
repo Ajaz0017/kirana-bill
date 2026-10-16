@@ -238,9 +238,11 @@ bill-generator/
 
 ### Phase 4: Polish
 
-- [ ] PWA (phone pe install, offline manual mode)
-- [ ] WhatsApp share (Web Share API)
-- [ ] Settings: shop info edit karna, invoice number reset
+- [x] PWA: phone pe install (icon, full screen) aur offline manual mode. Online pe PIN check hamesha chalta hai; offline mein pichhla unlock maana jaata hai
+- [x] WhatsApp share: PDF ke saath bill ka message, customer ka mobile ho to seedha unki chat
+- [x] Settings: dukaan, UPI, stamp/signature, agla invoice number / 1 se shuru, scan ki yaaddasht
+- [x] Backup / restore (JSON file: dukaan, bill number, scan ki yaaddasht, chalu bill)
+- [ ] Asli phone pe test: install, offline, WhatsApp share (deploy ke baad, HTTPS chahiye)
 
 ---
 

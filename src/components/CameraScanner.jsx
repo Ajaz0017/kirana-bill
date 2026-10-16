@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { lockScroll } from '../utils/scrollLock'
 import { AnimatePresence, motion } from 'motion/react'
 import { Camera, Flashlight, FlashlightOff, Images, X } from 'lucide-react'
 
@@ -28,8 +29,7 @@ export default function CameraScanner({ open, onCapture, onClose }) {
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlockScroll = lockScroll()
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
 
@@ -65,7 +65,7 @@ export default function CameraScanner({ open, onCapture, onClose }) {
       cancelled = true
       streamRef.current?.getTracks().forEach((t) => t.stop())
       streamRef.current = null
-      document.body.style.overflow = prevOverflow
+      unlockScroll()
       window.removeEventListener('keydown', onKey)
     }
   }, [open, onClose])

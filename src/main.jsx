@@ -20,6 +20,9 @@ import '@fontsource/pt-serif/latin-400-italic.css'
 import '@fontsource/pt-serif/latin-700.css'
 import './index.css'
 import App from './App.jsx'
+import { resetScrollLock } from './utils/scrollLock'
+
+resetScrollLock()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

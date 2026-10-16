@@ -3,9 +3,10 @@
 import { next } from '@vercel/functions'
 import { isAuthed } from './api/_auth.js'
 
-// Everything except the lock screen, its PIN endpoint and the favicon
+// Everything except the lock screen, its PIN endpoint, and the harmless install files (icons,
+// manifest, service worker) that browsers fetch without cookies; keep in sync with vite.config.js
 export const config = {
-  matcher: ['/((?!lock\\.html|api/auth|favicon\\.svg).*)'],
+  matcher: ['/((?!lock\\.html|api/auth|favicon\\.svg|manifest\\.webmanifest|icons/|sw\\.js|registerSW\\.js|workbox-).*)'],
 }
 
 export default async function middleware(request) {

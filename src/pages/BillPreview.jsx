@@ -1,12 +1,13 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
-import { Download, FileDown, FilePlus2, LoaderCircle, Pencil, Printer, Share2 } from 'lucide-react'
+import { Download, FileDown, FilePlus2, LoaderCircle, MessageCircle, Pencil, Printer, Share2 } from 'lucide-react'
 import { selectTotal, useBillStore } from '../store/useBillStore'
 import BillTable from '../components/BillTable'
 import BottomBar from '../components/BottomBar'
 import BottomSheet from '../components/BottomSheet'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { billToPdf, downloadFile, pxToMm } from '../utils/pdf'
+import { billMessage, waLink, waNumber } from '../utils/whatsapp'
 
 const SHEET_W = 794 // A4 width at 96dpi
 
@@ -51,9 +52,16 @@ export default function BillPreview() {
   }
   const closePdf = () => setPdf((p) => ({ ...p, file: null, error: '' }))
   const canShare = !!pdf.file && !!navigator.canShare?.({ files: [pdf.file] })
+  const message = billMessage({ shopInfo, details, total, itemCount: items.length })
+  const customerWa = waNumber(details.customerMobile)
+  // WhatsApp links can't carry files: save the PDF first so it's one tap to attach in the chat
+  const openWhatsApp = () => {
+    downloadFile(pdf.file)
+    window.open(waLink(customerWa, message), '_blank', 'noopener')
+  }
   const share = async () => {
     try {
-      await navigator.share({ files: [pdf.file], title: fileName })
+      await navigator.share({ files: [pdf.file], title: fileName, text: message })
     } catch {
       // user closed the share sheet
     }
@@ -128,6 +136,17 @@ export default function BillPreview() {
                 </button>
               )}
             </div>
+            <button type="button" onClick={openWhatsApp} className="btn-whatsapp w-full py-3.5 text-base">
+              <MessageCircle className="size-5" />
+              {customerWa ? `WhatsApp: ${details.customerMobile}` : 'WhatsApp pe bhejein'}
+            </button>
+            <p className="text-xs text-zinc-500">
+              {customerWa
+                ? 'Customer ki chat bill ke message ke saath khulegi. PDF download ho jayega, chat mein 📎 se attach karein.'
+                : canShare
+                  ? 'Share se PDF seedha WhatsApp pe jayega. Customer ka mobile Details mein daalein to unki chat seedhe khulegi.'
+                  : 'Customer ka mobile Details mein daalein to unki chat seedhe khulegi.'}
+            </p>
           </div>
         )}
       </BottomSheet>

@@ -30,8 +30,8 @@ const emptyShop = () => ({
   name: '',
   address: '',
   mobile: '',
-  upiId: 'najeebakhlaque560@okhdfcbank',
-  upiName: 'Najeeba Akhlaque',
+  upiId: '',
+  upiName: '',
   upiMobile: '',
   stamp: 'default',
   signature: 'default',
@@ -42,6 +42,7 @@ export const useBillStore = create(
     (set) => ({
       step: 0,
       dir: 1,
+      settingsOpen: false, // not persisted: the app always reopens on the bill flow
       items: [],
       details: emptyDetails(0),
       shopInfo: emptyShop(),
@@ -51,6 +52,8 @@ export const useBillStore = create(
       nameFixes: {},
 
       goTo: (step) => set((s) => ({ step, dir: step >= s.step ? 1 : -1 })),
+      openSettings: () => set({ settingsOpen: true }),
+      closeSettings: () => set({ settingsOpen: false }),
 
       addItem: (item) =>
         set((s) => ({
@@ -72,6 +75,23 @@ export const useBillStore = create(
 
       setDetails: (patch) => set((s) => ({ details: { ...s.details, ...patch } })),
       setShopInfo: (patch) => set((s) => ({ shopInfo: { ...s.shopInfo, ...patch } })),
+
+      // Next bill number (e.g. back to 1 for a new year); also renumbers the bill being made now
+      setNextInvoiceNo: (n) =>
+        set((s) => ({ lastInvoiceNo: n - 1, details: { ...s.details, invoiceNo: String(n) } })),
+
+      // Forget what the scan learned (corrections + remembered item names)
+      clearLearning: () => set({ knownItems: [], nameFixes: {} }),
+
+      // Replace this device's data with a backup file's (see utils/backup.js)
+      restoreBackup: (data) =>
+        set((s) => ({
+          shopInfo: { ...emptyShop(), ...data.shopInfo },
+          lastInvoiceNo: data.lastInvoiceNo ?? s.lastInvoiceNo,
+          knownItems: data.knownItems ?? [],
+          nameFixes: data.nameFixes ?? {},
+          ...(data.draft ? { items: data.draft.items, details: data.draft.details, step: 0 } : {}),
+        })),
 
       // Bill done: remember its invoice number and start a fresh draft
       finishBill: () =>

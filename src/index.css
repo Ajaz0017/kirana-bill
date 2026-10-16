@@ -53,6 +53,9 @@
 @utility btn-danger {
   @apply btn bg-rose-600 text-white shadow-lg shadow-rose-600/25 hover:bg-rose-500;
 }
+@utility btn-whatsapp {
+  @apply btn bg-[#1faa53] text-white shadow-lg shadow-emerald-600/25 hover:bg-[#1c9a4b];
+}
 @utility btn-ghost {
   @apply btn border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50;
 }

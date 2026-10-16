@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { lockScroll } from '../utils/scrollLock'
 import { AnimatePresence, motion, useDragControls } from 'motion/react'
 import { X } from 'lucide-react'
 
@@ -11,11 +12,10 @@ export default function BottomSheet({ open, title, onClose, children, footer }) 
   useEffect(() => {
     if (!open) return
     const onKey = (e) => e.key === 'Escape' && onClose()
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlockScroll = lockScroll()
     window.addEventListener('keydown', onKey)
     return () => {
-      document.body.style.overflow = prevOverflow
+      unlockScroll()
       window.removeEventListener('keydown', onKey)
     }
   }, [open, onClose])
