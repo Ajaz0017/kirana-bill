@@ -1,6 +1,8 @@
 import { UNITS } from '../constants'
 import { imageToDataURL } from './image'
 import { inr, round } from './format'
+import { createNameMatcher } from './itemNames'
+import { CATALOG_NAMES } from '../data/catalog'
 
 // What the AI might write -> the app's units
 const UNIT_ALIASES = {
@@ -15,8 +17,13 @@ const UNIT_ALIASES = {
 }
 const toUnit = (u) => UNIT_ALIASES[u] ?? (UNITS.includes(u) ? u : 'pcs')
 
-/** Photo -> compressed JPEG -> /api/scan -> rows ready for the review sheet */
-export async function scanBill(file) {
+const MAX_HINTS = 200
+
+/**
+ * Photo -> compressed JPEG -> /api/scan -> rows ready for the review sheet.
+ * `known` (names this shop sells) and `fixes` (owner's past corrections) steer and clean item names.
+ */
+export async function scanBill(file, { known = [], fixes = {} } = {}) {
   // ~1600px is plenty for handwriting and keeps the upload around 200–400 KB
   const dataUrl = await imageToDataURL(file, 1600, 'image/jpeg', 0.8)
   let res
@@ -24,7 +31,12 @@ export async function scanBill(file) {
     res = await fetch('/api/scan', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ image: dataUrl.split(',')[1], mimeType: 'image/jpeg' }),
+      body: JSON.stringify({
+        image: dataUrl.split(',')[1],
+        mimeType: 'image/jpeg',
+        // The shop's own spellings first, then the catalog, so the AI picks familiar names
+        hints: [...new Set([...known, ...CATALOG_NAMES])].slice(0, MAX_HINTS),
+      }),
     })
   } catch {
     throw new Error('Internet nahi chal raha, check karke dobara try karein')
@@ -37,13 +49,18 @@ export async function scanBill(file) {
   }
   if (!res.ok) throw new Error(data.error || 'Scan nahi ho paya, dobara try karein')
 
+  const matchName = createNameMatcher({ known, fixes })
   const rows = data.items.map((it, i) => {
+    const { name, changed } = matchName(it.name)
     const amount = it.amount ?? (it.qty && it.rate ? round(it.qty * it.rate) : null)
     // Double-check the model's arithmetic ourselves
     const mismatch = it.qty && it.rate && amount && Math.abs(it.qty * it.rate - amount) > 1
     return {
       key: `${Date.now()}-${i}`,
-      name: it.name,
+      name,
+      suggested: name, // what we proposed; differs from the final name if the owner edits it
+      scannedName: it.name, // what the AI actually read, shown when we corrected it
+      autoFixed: changed,
       qty: it.qty ?? '',
       unit: toUnit(it.unit),
       rate: it.rate ?? '',

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Camera, CheckCheck, LoaderCircle, TriangleAlert, X } from 'lucide-react'
+import { Camera, CheckCheck, LoaderCircle, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { UNITS } from '../constants'
 import { cleanDecimal, fmtQty, inr, round } from '../utils/format'
 import BottomSheet from './BottomSheet'
@@ -45,6 +45,16 @@ const Row = ({ row, index, onChange, onRemove }) => {
         <input className="field px-2.5 py-2" inputMode="decimal" placeholder="Rate" aria-label="Rate" value={row.rate} onChange={set('rate')} />
         <input className="field px-2.5 py-2 font-bold" inputMode="decimal" placeholder="₹" aria-label="Amount" value={row.amount} onChange={set('amount')} />
       </div>
+      {row.autoFixed && row.name === row.suggested && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-zinc-500">
+          <Sparkles className="size-3.5 text-violet-500" />
+          <span className="min-w-0 truncate">AI ne padha: “{row.scannedName}”</span>
+          <button type="button" onClick={() => onChange({ ...row, name: row.scannedName })}
+            className="shrink-0 font-semibold text-violet-600 underline underline-offset-2">
+            Wahi rakhein
+          </button>
+        </p>
+      )}
       {row.uncertain && (
         <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
           <TriangleAlert className="size-3.5" /> Photo se check kar lein

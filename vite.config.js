@@ -39,9 +39,11 @@ const vercelLocal = (env) => {
     server.middlewares.use(async (req, res, nextMw) => {
       try {
         const path = (req.originalUrl ?? req.url).split('?')[0]
+        // A Node request body can be read only once, so build the Web Request once and clone it
+        const request = await toRequest(req)
         if (!PUBLIC_PATHS.includes(path)) {
           const { default: middleware } = await load('/middleware.js')
-          const gate = await middleware(await toRequest(req))
+          const gate = await middleware(request.clone())
           if (!gate.headers.get('x-middleware-next')) return send(res, gate)
         }
         const api = path.match(/^\/api\/([\w-]+)$/)
@@ -49,7 +51,7 @@ const vercelLocal = (env) => {
         const mod = await load(`/api/${api[1]}.js`).catch(() => null)
         const handler = mod?.[req.method]
         if (!handler) return send(res, Response.json({ error: 'Not found' }, { status: 404 }))
-        return send(res, await handler(await toRequest(req)))
+        return send(res, await handler(request))
       } catch (e) {
         console.error(e)
         return send(res, Response.json({ error: e.message }, { status: 500 }))

@@ -163,5 +163,46 @@
         "amount": 75
       }
     ]
+  },
+  "bill-4-hindi-naap": {
+    "note": "Hindi naap-tol: साढ़े 2 = 2.5, पौना = 0.75. Ande wali line हिंदी अंकों mein hai (१२ नग × ७ = ८४). Aakhri line ” (ditto) hai, matlab upar wala item (Sabun) dobara.",
+    "total": 484,
+    "items": [
+      {
+        "name": "Chawal",
+        "qty": 2.5,
+        "unit": "kg",
+        "rate": 52,
+        "amount": 130
+      },
+      {
+        "name": "Daal Moong",
+        "qty": 0.75,
+        "unit": "kg",
+        "rate": 120,
+        "amount": 90
+      },
+      {
+        "name": "Anda",
+        "qty": 12,
+        "unit": "pcs",
+        "rate": 7,
+        "amount": 84
+      },
+      {
+        "name": "Sabun",
+        "qty": 3,
+        "unit": "pcs",
+        "rate": 30,
+        "amount": 90
+      },
+      {
+        "name": "Sabun",
+        "qty": 2,
+        "unit": "pcs",
+        "rate": 45,
+        "amount": 90
+      }
+    ]
   }
 }

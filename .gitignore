@@ -25,3 +25,6 @@ dist-ssr
 
 # Secrets
 .env
+
+# Downloaded font for scripts/make-test-bills.py
+scripts/.fonts/

@@ -65,13 +65,18 @@ export default function ItemsPage() {
     setScan({ id, status: 'loading', photo: preview })
     setScanOpen(true)
     try {
-      const result = await scanBill(file)
+      const { knownItems: known, nameFixes: fixes } = useBillStore.getState()
+      const result = await scanBill(file, { known, fixes })
       setScan((s) => (s?.id === id ? { id, status: 'done', ...result } : s))
     } catch (e) {
       setScan((s) => (s?.id === id ? { id, status: 'error', photo: preview, error: e.message } : s))
     }
   }
   const addScanned = (rows) => {
+    // Learn from the owner's edits so the same misreading is fixed automatically next time
+    rows.forEach(({ name, suggested, scannedName }) => {
+      if (name.trim() !== suggested) useBillStore.getState().rememberFix(scannedName, name)
+    })
     rows.forEach(({ name, qty, unit, rate, amount }) =>
       addItem({
         name: name.trim(),

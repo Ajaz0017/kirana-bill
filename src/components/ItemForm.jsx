@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { motion, useAnimationControls } from 'motion/react'
 import { COMMON_ITEMS, UNITS } from '../constants'
 import { cleanDecimal, fmtQty, round } from '../utils/format'
+import { useBillStore } from '../store/useBillStore'
 
 const toForm = (item) => ({
   name: item?.name ?? '',
@@ -16,6 +17,9 @@ const toForm = (item) => ({
  * editing amount (with a rate present) recalculates qty.
  */
 export default function ItemForm({ id, editing, onSubmit }) {
+  const knownItems = useBillStore((s) => s.knownItems)
+  // This shop's own items first, then the common catalog
+  const suggestions = [...new Set([...knownItems, ...COMMON_ITEMS])]
   const [form, setForm] = useState(() => toForm(editing))
   const [error, setError] = useState('')
   const nameRef = useRef(null)
@@ -84,7 +88,7 @@ export default function ItemForm({ id, editing, onSubmit }) {
         onChange={(e) => change('name', e.target.value)}
       />
       <datalist id="common-items">
-        {COMMON_ITEMS.map((n) => (
+        {suggestions.map((n) => (
           <option key={n} value={n} />
         ))}
       </datalist>

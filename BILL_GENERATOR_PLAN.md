@@ -224,9 +224,17 @@ bill-generator/
 
 ### Phase 3: Accuracy Tuning
 
-- [ ] 10–15 asli handwritten bills se test karna
-- [ ] Prompt sudhaarna (Hindi naam, fractions, gm/kg)
-- [ ] Dukaan ke common items ki list taaki spelling auto-correct ho
+- [ ] 10–15 asli handwritten bills se test karna (`npm run eval -- <folder>`, neeche dekhein)
+- [x] Prompt sudhaarna (Hindi naam, fractions, gm/kg, हिंदी अंक, पौना/साढ़े, ditto 〃, नग, udhaar/total ignore)
+- [x] Dukaan ke common items ki list taaki spelling auto-correct ho (`src/data/catalog.js`)
+- [x] Owner ki galti-sudhaar yaad rakhna (agli baar wahi naam apne aap theek) + dukaan ke apne items AI ko hint
+- [x] Accuracy check script: `npm run eval` (4 nakli bills par 130/130 fields sahi)
+
+**Asli bills test karne ka tareeka:**
+1. Photos ek folder mein rakhein, jaise `real-bills/`.
+2. `npm run eval -- real-bills` chalayein. Har photo ka scan `real-bills/answers.todo.json` mein likha jaayega.
+3. Us file mein galtiyan theek karke entries ko `real-bills/answers.json` mein daal dein.
+4. Ab `npm run eval -- real-bills` chalane pe har photo ka score aur galat fields dikhenge. Prompt badalne ke baad yahi dobara chalayein.
 
 ### Phase 4: Polish
 

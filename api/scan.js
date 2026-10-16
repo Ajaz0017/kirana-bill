@@ -8,19 +8,44 @@
 import { isAuthed } from './_auth.js'
 
 const PROMPT = `You read handwritten Indian kirana (grocery) bills. The writing mixes Hindi (Devanagari) and English/Hinglish.
-Extract every purchased line item.
+Extract every purchased line item, top to bottom, in the order written.
 
-Rules:
-- name: write in Roman script (Hinglish), e.g. "दाल अरहर" -> "Daal Arhar", "चीनी" -> "Cheeni". Fix obvious spelling.
-- unit: one of kg, gm, ltr, ml, pcs, pkt, dozen, box. Default to the unit the rate is quoted in.
-- qty: quantity in that same unit. If the rate is per kg but qty is written as "250 gm" or "पाव", use 0.25 kg. "½"/"आधा" = 0.5, "सवा" = 1.25, "डेढ़" = 1.5, "ढाई" = 2.5.
-- rate: price per one unit (number only, no ₹). null if not written.
-- amount: line total (number only). If missing but qty and rate exist, use qty × rate.
-- Ignore crossed-out lines, the Total/Grand total line, dates, phone numbers and the shop header.
-- uncertain: true if any value was hard to read, guessed, or qty × rate does not match amount.
+Names:
+- Write names in Roman script (Hinglish): "दाल अरहर" -> "Daal Arhar", "चीनी" -> "Cheeni". Keep brand names as written (e.g. "Parle G", "Tata Namak").
+- If a line is a ditto mark (〃, ", '', "do", "वही") it repeats the item/value from the line above.
+
+Numbers:
+- Devanagari digits: ० १ २ ३ ४ ५ ६ ७ ८ ९ = 0–9. Ignore "₹", "Rs", "/-", "=" and commas around numbers.
+- Fractions: "½"/"1/2"/"आधा"/"aadha" = 0.5, "¼"/"पाव"/"paav" = 0.25, "¾"/"पौना"/"pauna" = 0.75, "सवा X" = X + 0.25, "साढ़े X" = X + 0.5, "पौने X" = X − 0.25, "डेढ़" = 1.5, "ढाई" = 2.5.
+- A line may be written as "qty × rate = amount", "qty @ rate", or just name + amount.
+
+Units:
+- unit: one of kg, gm, ltr, ml, pcs, pkt, dozen, box. "किलो"/"कि."/"kilo" = kg, "ग्राम"/"ग्रा."/"g" = gm, "लीटर"/"ली."/"L" = ltr, "नग"/"pc"/"nos" = pcs, "पैकेट"/"pkt" = pkt, "दर्जन"/"dz" = dozen. No unit written: use pcs for countable things (eggs, soap, packets) and kg for loose grains.
+- qty must be in the unit the rate is quoted in. Rate per kg but qty "250 gm" -> qty 0.25, unit kg. Rate per kg but qty "500 g" -> 0.5 kg.
+
+Values:
+- rate: price per one unit, or null if not written. amount: the line total as written. If amount is missing but qty and rate exist, use qty × rate.
+- Never invent values. If you cannot read a value, use null and set uncertain: true.
+- uncertain: true if anything was hard to read or guessed, or if qty × rate does not match the written amount (keep the written amount).
+
+Ignore: crossed-out/scribbled lines, the Total/Grand total/कुल/टोटल line, subtotals, previous balance (बकाया/udhaar), dates, phone numbers, customer name and the shop header.
 - billTotal: the grand total written on the bill (number), or null if there is none. Do NOT add it as an item.
 - notes: short Hinglish notes about problems (e.g. "Item 3 ka rate saaf nahi hai"). Empty if none.
 Return only JSON.`
+
+const MAX_HINTS = 200
+
+// The shop's item names make the model prefer familiar spellings ("Atta" not "Aata")
+function buildPrompt(hints) {
+  const names = (Array.isArray(hints) ? hints : [])
+    .filter((h) => typeof h === 'string')
+    .map((h) => h.replace(/[\n\r,]+/g, ' ').trim().slice(0, 40))
+    .filter(Boolean)
+    .slice(0, MAX_HINTS)
+  return names.length
+    ? `${PROMPT}\n\nItems this shop usually sells. When a line is one of these, use exactly this spelling; otherwise write the name as read:\n${names.join(', ')}`
+    : PROMPT
+}
 
 const SCHEMA = {
   type: 'OBJECT',
@@ -71,11 +96,11 @@ async function post(url, init, timeoutMs, label) {
 }
 
 // No thinkingConfig: Flash-Lite rejects thinkingBudget, and it doesn't think by default anyway
-async function askGemini({ image, mimeType }, env, model, timeoutMs) {
+async function askGemini({ image, mimeType, prompt }, env, model, timeoutMs) {
   const res = await post(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: PROMPT }, { inline_data: { mime_type: mimeType, data: image } }] }],
+      contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mimeType, data: image } }] }],
       generationConfig: { temperature: 0, responseMimeType: 'application/json', responseSchema: SCHEMA },
     }),
   }, timeoutMs, model)
@@ -87,7 +112,7 @@ async function askGemini({ image, mimeType }, env, model, timeoutMs) {
 }
 
 // Zhipu / Z.ai speaks the OpenAI chat format
-async function askGlm({ image, mimeType }, env, timeoutMs) {
+async function askGlm({ image, mimeType, prompt }, env, timeoutMs) {
   const base = env.GLM_BASE_URL || 'https://api.z.ai/api/paas/v4'
   const res = await post(`${base}/chat/completions`, {
     headers: { 'content-type': 'application/json', authorization: `Bearer ${env.GLM_API_KEY}` },
@@ -101,7 +126,7 @@ async function askGlm({ image, mimeType }, env, timeoutMs) {
             { type: 'image_url', image_url: { url: `data:${mimeType};base64,${image}` } },
             {
               type: 'text',
-              text: `${PROMPT}\nJSON shape: {"items":[{"name":"","qty":0,"unit":"kg","rate":0,"amount":0,"uncertain":false}],"billTotal":0,"notes":[]}`,
+              text: `${prompt}\nJSON shape: {"items":[{"name":"","qty":0,"unit":"kg","rate":0,"amount":0,"uncertain":false}],"billTotal":0,"notes":[]}`,
             },
           ],
         },
@@ -142,7 +167,8 @@ function clean(result) {
 }
 
 export async function scan(body, env) {
-  const { image, mimeType = 'image/jpeg' } = body ?? {}
+  const { image, mimeType = 'image/jpeg', hints } = body ?? {}
+  const prompt = buildPrompt(hints)
   if (typeof image !== 'string' || !image) throw new ScanError(400, 'Photo nahi mili')
   if (image.length > MAX_BASE64) throw new ScanError(413, 'Photo bahut badi hai')
   if (!MIME_TYPES.includes(mimeType)) throw new ScanError(415, 'Sirf JPG/PNG/WebP photo chalegi')
@@ -161,7 +187,7 @@ export async function scan(body, env) {
     const ms = Math.min(i === 0 ? FIRST_MODEL_MS : NEXT_MODEL_MS, deadline - Date.now())
     if (ms < 3000) break
     try {
-      return { ...clean(parseJson(await ask({ image, mimeType }, ms))), provider }
+      return { ...clean(parseJson(await ask({ image, mimeType, prompt }, ms))), provider }
     } catch (e) {
       errors.push(e)
       console.error(`[scan] ${provider} failed:`, e.message)
