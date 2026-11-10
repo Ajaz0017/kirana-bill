@@ -4,7 +4,7 @@ import { todayISO } from '../utils/format'
 import { nameKey } from '../utils/itemNames'
 
 // crypto.randomUUID needs a secure context, which a phone on LAN (http://192.168...) is not
-const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+export const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 
 const emptyDetails = (lastInvoiceNo) => ({
   date: todayISO(),
@@ -37,12 +37,21 @@ const emptyShop = () => ({
   signature: 'default',
 })
 
+// Bottom navigation, left to right
+export const TABS = ['home', 'bills', 'settings', 'profile']
+
 export const useBillStore = create(
   persist(
     (set) => ({
       step: 0,
       dir: 1,
-      settingsOpen: false, // not persisted: the app always reopens on the bill flow
+      // Not persisted: the app always reopens on Home
+      tab: 'home',
+      viewing: null, // a saved bill opened from the Bills tab: { id, data: { items, details, shopInfo }, ... }
+      // Id of the bill being made; saving again with the same id updates that bill in history
+      draftId: newId(),
+      // Bills waiting to reach the server (made offline, or the save failed): id -> bill
+      pendingBills: {},
       items: [],
       details: emptyDetails(0),
       shopInfo: emptyShop(),
@@ -52,8 +61,31 @@ export const useBillStore = create(
       nameFixes: {},
 
       goTo: (step) => set((s) => ({ step, dir: step >= s.step ? 1 : -1 })),
-      openSettings: () => set({ settingsOpen: true }),
-      closeSettings: () => set({ settingsOpen: false }),
+      setTab: (tab) => set((s) => (tab === s.tab ? { viewing: null } : { tab, viewing: null, dir: TABS.indexOf(tab) > TABS.indexOf(s.tab) ? 1 : -1 })),
+      setViewing: (viewing) => set({ viewing, dir: viewing ? 1 : -1 }),
+
+      queueBill: (bill) => set((s) => ({ pendingBills: { ...s.pendingBills, [bill.id]: bill } })),
+      // Only drops the exact copy that was sent, so a newer save made meanwhile still goes out
+      unqueueBill: (id, sent) =>
+        set((s) => {
+          if (!s.pendingBills[id] || (sent && s.pendingBills[id] !== sent)) return {}
+          const { [id]: _, ...rest } = s.pendingBills
+          return { pendingBills: rest }
+        }),
+
+      // Open a saved bill on Home: edit it in place, or start a new bill from a copy of it
+      loadBill: ({ id, data }, { copy = false } = {}) =>
+        set((s) => ({
+          draftId: copy ? newId() : id,
+          items: data.items.map((i) => ({ ...i, id: newId() })),
+          details: copy
+            ? { ...emptyDetails(s.lastInvoiceNo), customerName: data.details.customerName ?? '', customerAddress: data.details.customerAddress ?? '', customerMobile: data.details.customerMobile ?? '' }
+            : { ...emptyDetails(s.lastInvoiceNo), ...data.details },
+          tab: 'home',
+          viewing: null,
+          step: 0,
+          dir: -1,
+        })),
 
       addItem: (item) =>
         set((s) => ({
@@ -90,7 +122,7 @@ export const useBillStore = create(
           lastInvoiceNo: data.lastInvoiceNo ?? s.lastInvoiceNo,
           knownItems: data.knownItems ?? [],
           nameFixes: data.nameFixes ?? {},
-          ...(data.draft ? { items: data.draft.items, details: data.draft.details, step: 0 } : {}),
+          ...(data.draft ? { items: data.draft.items, details: data.draft.details, draftId: newId(), step: 0 } : {}),
         })),
 
       // Bill done: remember its invoice number and start a fresh draft
@@ -98,14 +130,17 @@ export const useBillStore = create(
         set((s) => {
           const no = parseInt(s.details.invoiceNo, 10)
           const last = Number.isFinite(no) ? Math.max(no, s.lastInvoiceNo) : s.lastInvoiceNo
-          return { lastInvoiceNo: last, items: [], details: emptyDetails(last), step: 0, dir: -1 }
+          return { lastInvoiceNo: last, items: [], details: emptyDetails(last), draftId: newId(), step: 0, dir: -1 }
         }),
     }),
     {
-      name: 'kirana-bill',
+      name: 'kirana-bill', // replaced by a per-user key in hydrateForUser before anything is read
       version: 1,
-      partialize: ({ step, items, details, shopInfo, lastInvoiceNo, knownItems, nameFixes }) => ({
+      skipHydration: true,
+      partialize: ({ step, draftId, pendingBills, items, details, shopInfo, lastInvoiceNo, knownItems, nameFixes }) => ({
         step,
+        draftId,
+        pendingBills,
         items,
         details,
         shopInfo,
@@ -122,5 +157,24 @@ export const useBillStore = create(
     },
   ),
 )
+
+/**
+ * Each account keeps its own shop details and draft on this device. Data saved before logins
+ * existed (key "kirana-bill") goes to the first account that logs in here.
+ */
+export async function hydrateForUser(userId) {
+  const key = `kirana-bill:${userId}`
+  try {
+    const legacy = localStorage.getItem('kirana-bill')
+    if (legacy) {
+      if (!localStorage.getItem(key)) localStorage.setItem(key, legacy)
+      localStorage.removeItem('kirana-bill')
+    }
+  } catch {
+    // storage blocked: start empty
+  }
+  useBillStore.persist.setOptions({ name: key })
+  await useBillStore.persist.rehydrate()
+}
 
 export const selectTotal = (s) => s.items.reduce((sum, i) => sum + (Number(i.amount) || 0), 0)

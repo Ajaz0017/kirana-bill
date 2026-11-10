@@ -1,8 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
-import { motion } from 'motion/react'
-import { ArrowLeft, Brain, Check, DatabaseBackup, Download, FileUp, Hash, QrCode, Share2, Stamp, Store } from 'lucide-react'
+import { Brain, Check, DatabaseBackup, Download, FileUp, Hash, QrCode, Share2, Stamp, Store } from 'lucide-react'
 import { useBillStore } from '../store/useBillStore'
-import BottomBar from '../components/BottomBar'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Toast from '../components/Toast'
 import { Field, ImagePick, Section } from '../components/FormBits'
@@ -20,7 +18,7 @@ export default function SettingsPage() {
   const lastInvoiceNo = useBillStore((s) => s.lastInvoiceNo)
   const knownCount = useBillStore((s) => s.knownItems.length)
   const fixCount = useBillStore((s) => Object.keys(s.nameFixes).length)
-  const { setShopInfo, closeSettings, setNextInvoiceNo, clearLearning, restoreBackup } = useBillStore.getState()
+  const { setShopInfo, setNextInvoiceNo, clearLearning, restoreBackup } = useBillStore.getState()
 
   const [nextNo, setNextNo] = useState(String(lastInvoiceNo + 1))
   // Kept after closing so the dialog text doesn't blank out mid-animation
@@ -78,14 +76,9 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 px-1">
-        <button type="button" onClick={closeSettings} aria-label="Wapas" className="btn-ghost size-10 p-0">
-          <ArrowLeft className="size-4" />
-        </button>
-        <div>
-          <h2 className="text-lg font-bold">Settings</h2>
-          <p className="text-xs text-zinc-500">Ek baar bharein, har bill mein kaam aayega</p>
-        </div>
+      <div className="px-1">
+        <h2 className="text-lg font-bold">Settings</h2>
+        <p className="text-xs text-zinc-500">Ek baar bharein, har bill mein kaam aayega. Badlav apne aap save hote hain.</p>
       </div>
 
       <Section index={0} icon={Store} title="Aapki dukaan">
@@ -171,12 +164,6 @@ export default function SettingsPage() {
           Sab bhool jao
         </button>
       </Section>
-
-      <BottomBar>
-        <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={closeSettings} className="btn-primary flex-1 py-3">
-          <Check className="size-4" /> Ho gaya
-        </motion.button>
-      </BottomBar>
 
       <ConfirmDialog
         open={confirmOpen}

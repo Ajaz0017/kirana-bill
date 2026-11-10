@@ -28,3 +28,6 @@ dist-ssr
 
 # Downloaded font for scripts/make-test-bills.py
 scripts/.fonts/
+
+# Local database for `npm run dev:local`
+.pglite/

@@ -1,25 +1,26 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useSyncExternalStore } from 'react'
-import { LockKeyhole, ReceiptIndianRupee, Settings, WifiOff } from 'lucide-react'
+import { ReceiptIndianRupee, WifiOff } from 'lucide-react'
 import { useBillStore } from './store/useBillStore'
+import { useSession } from './store/useSession'
+import { useToast } from './store/useToast'
 import Stepper from './components/Stepper'
+import BottomNav from './components/BottomNav'
+import Toast from './components/Toast'
 import ItemsPage from './pages/ItemsPage'
 import DetailsPage from './pages/DetailsPage'
 import BillPreview from './pages/BillPreview'
+import BillsPage from './pages/BillsPage'
 import SettingsPage from './pages/SettingsPage'
+import ProfilePage from './pages/ProfilePage'
 
-const PAGES = [ItemsPage, DetailsPage, BillPreview]
+const STEPS = [ItemsPage, DetailsPage, BillPreview]
+const TAB_PAGES = { bills: BillsPage, settings: SettingsPage, profile: ProfilePage }
 
 const slide = {
   enter: (dir) => ({ x: dir * 48, opacity: 0 }),
   center: { x: 0, opacity: 1 },
   exit: (dir) => ({ x: dir * -48, opacity: 0 }),
-}
-
-// Drops the PIN session cookie; the bill draft stays saved on this device
-const lock = async () => {
-  await fetch('/api/auth', { method: 'DELETE' }).catch(() => {})
-  location.replace('/lock.html')
 }
 
 const subscribeOnline = (cb) => {
@@ -34,15 +35,23 @@ const useOnline = () => useSyncExternalStore(subscribeOnline, () => navigator.on
 
 export default function App() {
   const online = useOnline()
+  const tab = useBillStore((s) => s.tab)
   const storedStep = useBillStore((s) => s.step)
   const dir = useBillStore((s) => s.dir)
   const hasItems = useBillStore((s) => s.items.length > 0)
+  const viewing = useBillStore((s) => !!s.viewing)
+  const user = useSession((s) => s.user)
+  const toast = useToast((s) => s.toast)
+  const clearToast = useToast((s) => s.clear)
+  const setTab = useBillStore((s) => s.setTab)
+
   // Details/Bill make no sense without items (e.g. a stale persisted step)
   const step = hasItems ? storedStep : 0
-  const settingsOpen = useBillStore((s) => s.settingsOpen)
-  const { openSettings } = useBillStore.getState()
-  const Page = settingsOpen ? SettingsPage : PAGES[step]
-  const pageKey = settingsOpen ? 'settings' : step
+  const home = tab === 'home'
+  const Page = home ? STEPS[step] : TAB_PAGES[tab]
+  const pageKey = home ? `home-${step}` : tab
+  // The A4 bill gets more room on wide screens
+  const wide = (home && step === 2) || (tab === 'bills' && viewing)
 
   return (
     <div className="relative min-h-dvh overflow-x-clip">
@@ -53,13 +62,11 @@ export default function App() {
         <div className="absolute -bottom-40 left-1/4 size-96 animate-blob rounded-full bg-fuchsia-200/40 blur-3xl [animation-delay:-12s]" />
       </div>
 
-      <div className={`mx-auto px-4 pt-5 ${step === 2 && !settingsOpen ? 'max-w-[52rem]' : 'max-w-lg'} transition-[max-width] duration-500 print:max-w-none print:p-0`}>
+      <div
+        className={`mx-auto px-4 pt-5 pb-[calc(var(--nav-h)+env(safe-area-inset-bottom)+1rem)] ${wide ? 'max-w-[52rem]' : 'max-w-lg'} transition-[max-width] duration-500 print:max-w-none print:p-0`}
+      >
         <header className="mb-5 space-y-4 print:hidden">
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-3"
-          >
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
             <motion.span
               whileHover={{ rotate: -8, scale: 1.05 }}
               className="grid size-11 place-items-center rounded-2xl bg-linear-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/30"
@@ -69,25 +76,21 @@ export default function App() {
             <div className="min-w-0 flex-1">
               <h1 className="text-lg leading-tight font-extrabold">Kirana Bill</h1>
               {online ? (
-                <p className="text-xs text-zinc-500">Bill of Supply, seconds mein</p>
+                <p className="truncate text-xs text-zinc-500">Welcome{user?.name ? `, ${user.name.split(' ')[0]}` : ''} 👋</p>
               ) : (
                 <p className="flex items-center gap-1 text-xs font-semibold text-amber-600">
-                  <WifiOff className="size-3.5" /> Offline · scan nahi chalega
+                  <WifiOff className="size-3.5" /> Offline · scan aur sync nahi chalega
                 </p>
               )}
             </div>
-            {!settingsOpen && (
-              <button type="button" onClick={openSettings} aria-label="Settings" title="Settings"
-                className="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white/70 text-zinc-500 transition hover:text-violet-600">
-                <Settings className="size-4.5" />
+            {user && tab !== 'profile' && (
+              <button type="button" onClick={() => setTab('profile')} aria-label="Profile" title={user.email}
+                className="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white/70 font-bold text-violet-700 transition hover:border-violet-300">
+                {(user.name || user.email).trim().charAt(0).toUpperCase()}
               </button>
             )}
-            <button type="button" onClick={lock} aria-label="App lock karein" title="Lock"
-              className="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white/70 text-zinc-500 transition hover:text-violet-600">
-              <LockKeyhole className="size-4.5" />
-            </button>
           </motion.div>
-          {!settingsOpen && <Stepper />}
+          {home && <Stepper />}
         </header>
 
         <AnimatePresence mode="wait" custom={dir} initial={false}>
@@ -104,6 +107,9 @@ export default function App() {
           </motion.main>
         </AnimatePresence>
       </div>
+
+      <BottomNav />
+      <Toast toast={toast} onDone={clearToast} />
     </div>
   )
 }

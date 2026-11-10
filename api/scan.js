@@ -5,7 +5,7 @@
 // (Vercel stops the function at 60s, see vercel.json).
 // Keys live only in server env vars (Vercel project settings / local .env).
 
-import { isAuthed } from './_auth.js'
+import { isAuthed, unauthorized } from './_auth.js'
 
 const PROMPT = `You read handwritten Indian kirana (grocery) bills. The writing mixes Hindi (Devanagari) and English/Hinglish.
 Extract every purchased line item, top to bottom, in the order written.
@@ -202,10 +202,8 @@ export async function scan(body, env) {
 
 // Vercel Function (Web standard signature)
 export async function POST(request) {
-  // middleware.js already blocks locked browsers; checked again so the AI quota is never exposed
-  if (!(await isAuthed(request, process.env))) {
-    return Response.json({ error: 'PIN se unlock karein', locked: true }, { status: 401 })
-  }
+  // middleware.js already blocks logged-out browsers; checked again so the AI quota is never exposed
+  if (!(await isAuthed(request, process.env))) return unauthorized()
   try {
     const body = await request.json().catch(() => null)
     return Response.json(await scan(body, process.env))

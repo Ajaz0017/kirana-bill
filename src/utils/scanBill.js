@@ -42,10 +42,10 @@ export async function scanBill(file, { known = [], fixes = {} } = {}) {
     throw new Error('Internet nahi chal raha, check karke dobara try karein')
   }
   const data = await res.json().catch(() => ({}))
-  if (res.status === 401 && data.locked) {
-    // PIN session expired: back to the lock screen (the bill draft stays in localStorage)
-    location.replace('/lock.html')
-    throw new Error('PIN dobara daalein')
+  if (res.status === 401 && data.loggedOut) {
+    // Session expired: back to the login screen (the bill draft stays in localStorage)
+    goToLogin()
+    throw new Error('Dobara login karein')
   }
   if (!res.ok) throw new Error(data.error || 'Scan nahi ho paya, dobara try karein')
 

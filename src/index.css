@@ -22,6 +22,10 @@
 }
 
 @layer base {
+  :root {
+    /* Height of the bottom navigation, without the phone's safe-area inset */
+    --nav-h: 4.25rem;
+  }
   html {
     -webkit-tap-highlight-color: transparent;
   }

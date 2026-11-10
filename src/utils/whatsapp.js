@@ -17,7 +17,7 @@ export function billMessage({ shopInfo, details, total, itemCount }) {
     `Items: ${itemCount}`,
     `*Total: ₹${inr(total)}*`,
     shopInfo.upiId && `\nUPI se pay karein: ${shopInfo.upiId}`,
-    '\Shukriya! Visit again.\n',
+    '\nShukriya! Visit again.',
   ]
     .filter(Boolean)
     .join('\n')

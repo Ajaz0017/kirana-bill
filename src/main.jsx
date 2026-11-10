@@ -21,11 +21,24 @@ import '@fontsource/pt-serif/latin-700.css'
 import './index.css'
 import App from './App.jsx'
 import { resetScrollLock } from './utils/scrollLock'
+import { goToLogin } from './utils/api'
+import { loadUser, useSession } from './store/useSession'
+import { hydrateForUser } from './store/useBillStore'
+import { startSync } from './utils/billSync'
 
 resetScrollLock()
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+// Who is logged in decides whose shop details and draft are loaded, so find out before rendering
+async function boot() {
+  const user = await loadUser()
+  if (!user) return goToLogin()
+  useSession.getState().setUser(user)
+  await hydrateForUser(user.id)
+  startSync()
+  createRoot(document.getElementById('root')).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+}
+boot()

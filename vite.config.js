@@ -6,7 +6,7 @@ import { defineConfig, loadEnv } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // Same paths middleware.js's matcher leaves open on Vercel (exact paths, or prefixes ending in "/")
-const PUBLIC_PATHS = ['/lock.html', '/api/auth', '/favicon.svg', '/manifest.webmanifest', '/icons/', '/sw.js', '/registerSW.js']
+const PUBLIC_PATHS = ['/login.html', '/api/auth', '/favicon.svg', '/manifest.webmanifest', '/icons/', '/sw.js', '/registerSW.js']
 const isPublic = (path) => PUBLIC_PATHS.some((p) => (p.endsWith('/') ? path.startsWith(p) : path === p)) || path.startsWith('/workbox-')
 
 // Node req -> Web Request, so the Vercel files run unchanged
@@ -32,7 +32,7 @@ async function send(res, response) {
 
 /**
  * Mimics Vercel locally (`npm run dev` / `npm run preview`): middleware.js guards every request,
- * and /api/<name> runs the matching export (POST/GET/DELETE) of api/<name>.js.
+ * and /api/<name> runs the matching export (GET/POST/PATCH/DELETE) of api/<name>.js.
  * Secrets come from .env and are never VITE_-prefixed, so they stay out of the browser bundle.
  */
 const vercelLocal = (env) => {
@@ -70,9 +70,9 @@ const vercelLocal = (env) => {
 
 /**
  * Installable app + offline manual mode.
- * Pages always come from the network first, so middleware.js still checks the PIN when online;
- * the cached copy is used only when the network fails (offline = "last unlock still counts").
- * Redirected answers (the lock screen) are never cached as the app.
+ * Pages always come from the network first, so middleware.js still checks the login when online;
+ * the cached copy is used only when the network fails (offline = "last login still counts").
+ * Redirected answers (the login screen) are never cached as the app.
  */
 const pwa = VitePWA({
   registerType: 'autoUpdate',
@@ -95,13 +95,13 @@ const pwa = VitePWA({
   },
   workbox: {
     globPatterns: ['**/*.{js,css,woff2,png,jpg,svg}'],
-    globIgnores: ['**/index.html', '**/lock.html'],
+    globIgnores: ['**/index.html', '**/login.html'],
     navigateFallback: null,
     cleanupOutdatedCaches: true,
     runtimeCaching: [
       {
         urlPattern: ({ request }) => request.mode === 'navigate',
-        handler: 'NetworkFirst', // no timeout on purpose: a slow network must not skip the PIN check
+        handler: 'NetworkFirst', // no timeout on purpose: a slow network must not skip the login check
         options: {
           cacheName: 'pages',
           plugins: [{ cacheWillUpdate: async ({ response }) => (response?.ok && !response.redirected ? response : null) }],

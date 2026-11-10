@@ -8,7 +8,7 @@ import { Field, Section } from '../components/FormBits'
 export default function DetailsPage() {
   const details = useBillStore((s) => s.details)
   const shopInfo = useBillStore((s) => s.shopInfo)
-  const { setDetails, goTo, openSettings } = useBillStore.getState()
+  const { setDetails, goTo, setTab } = useBillStore.getState()
   const [touched, setTouched] = useState(false)
 
   const missing = {
@@ -41,7 +41,7 @@ export default function DetailsPage() {
       </Section>
 
       {/* Shop details live in Settings; this just shows which shop the bill is from */}
-      <motion.button type="button" onClick={openSettings} whileTap={{ scale: 0.98 }}
+      <motion.button type="button" onClick={() => setTab('settings')} whileTap={{ scale: 0.98 }}
         initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}
         className={`card flex w-full items-center gap-3 p-4 text-left ${touched && missing.shopName ? 'ring-2 ring-rose-400' : ''}`}>
         <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-600">
