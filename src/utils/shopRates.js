@@ -76,4 +76,5 @@ export function groupByCategory(items) {
     .map(([category, list]) => ({ category, items: list.sort((x, y) => x.name.localeCompare(y.name)) }))
 }
 
-export const shopLink = (slug) => `${location.origin}/?shop=${encodeURIComponent(slug)}`
+// Customers' link (no login needed): the public rate list + online order page
+export const shopLink = (slug) => `${location.origin}/s/${encodeURIComponent(slug)}`

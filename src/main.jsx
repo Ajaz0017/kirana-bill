@@ -25,11 +25,14 @@ import { goToLogin } from './utils/api'
 import { loadUser, useSession } from './store/useSession'
 import { hydrateForUser, useBillStore } from './store/useBillStore'
 import { startSync } from './utils/billSync'
-import { loadMyShop } from './utils/shopSync'
+import { loadMyShop, watchNewOrders } from './utils/shopSync'
 import { listenForInstall } from './store/useInstall'
+import { registerSW } from 'virtual:pwa-register'
 
 resetScrollLock()
 listenForInstall()
+// Offline support for the billing app (the public shop page doesn't register it)
+registerSW({ immediate: true })
 
 // Who is logged in decides whose shop details and draft are loaded, so find out before rendering
 async function boot() {
@@ -38,7 +41,19 @@ async function boot() {
   useSession.getState().setUser(user)
   await hydrateForUser(user.id)
   startSync()
-  loadMyShop().catch(() => {}) // shop details + rate list from the cloud (e.g. on a new phone)
+  // Shop details + rate list from the cloud (e.g. on a new phone), then the new-orders badge
+  loadMyShop().catch(() => {}).finally(watchNewOrders)
+  // Tapped a new-order notification: open Orders (the app was closed) ...
+  const params = new URLSearchParams(location.search)
+  if (params.get('open') === 'orders') {
+    useBillStore.setState({ tab: 'shops', shopTab: 'orders', shopView: null })
+    history.replaceState(null, '', '/')
+  }
+  // ... or the app was open: the service worker tells us
+  navigator.serviceWorker?.addEventListener('message', (e) => {
+    if (e.data?.type === 'open-orders') useBillStore.setState({ tab: 'shops', shopTab: 'orders', shopView: null, viewing: null })
+    if (e.data?.type === 'new-order') useBillStore.setState((s) => ({ newOrders: s.newOrders + 1 }))
+  })
   // Shared shop link (/?shop=<slug>): open that shop, then tidy the address bar
   const sharedShop = new URLSearchParams(location.search).get('shop')
   if (sharedShop) {

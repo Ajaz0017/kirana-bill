@@ -6,8 +6,16 @@
 // GET /api/shops?history=ID    -> { item, days, paise }             one item's rate history (for the graph)
 // GET /api/shops?q=&offset=    -> { shops: [...], hasMore }         public shops, recently updated first
 // PUT /api/shops { shop, items? } -> { shop, items }                create/update own shop (+ whole rate list)
+// GET /api/shops?orders=new|ready|done|cancelled|all&offset= -> { orders, hasMore, newCount }  own shop's orders
+// GET /api/shops?orders=count  -> { newCount }                      for the "new orders" badge
+// PATCH /api/shops?order=CODE { status?, billId? }                  update one of the own shop's orders
+// GET /api/shops?push=key       -> { publicKey | null }              VAPID key for turning notifications on
+// POST /api/shops?push { endpoint, keys: { p256dh, auth } }          this phone gets new-order notifications
+// DELETE /api/shops?push { endpoint }                                this phone stops getting them
 import { getSession, unauthorized } from './_auth.js'
 import { fail, httpError, sql } from './_db.js'
+import { ORDER_COLS, STATUSES, orderOut } from './_orders.js'
+import { pushConfigured } from './_push.js'
 
 // Keep in sync with src/constants.js
 const UNITS = ['kg', 'gm', 'ltr', 'ml', 'pcs', 'pkt', 'dozen', 'box']
@@ -26,7 +34,7 @@ const str = (v, max) => String(v ?? '').trim().slice(0, max)
 const isId = (v) => /^\d{1,18}$/.test(String(v ?? ''))
 
 const SHOP_COLS = `id::text as id, owner_id::text as owner_id, slug, name, address, city, mobile,
-  upi_id, upi_name, upi_mobile, is_public, updated_at`
+  upi_id, upi_name, upi_mobile, is_public, order_whatsapp, orders_on, closed, min_order_paise, updated_at`
 // Rate history arrays stay out of list answers: only the graph needs them
 const ITEM_COLS = `id::text as id, name, unit, rate_paise, category, in_stock, slab_qty, slab_paise,
   hist_days[cardinality(hist_days)] as changed_day`
@@ -44,7 +52,18 @@ function shopOut(r, userId) {
     isOwner: owner,
     updatedAt: r.updated_at,
     // Payment details are only needed on the owner's own bills
-    ...(owner ? { upiId: r.upi_id, upiName: r.upi_name, upiMobile: r.upi_mobile } : {}),
+    ...(owner
+      ? {
+          upiId: r.upi_id,
+          upiName: r.upi_name,
+          upiMobile: r.upi_mobile,
+          // Online order switches (Phase 8)
+          orderWhatsapp: r.order_whatsapp,
+          ordersOn: r.orders_on,
+          closed: r.closed,
+          minOrder: r.min_order_paise / 100,
+        }
+      : {}),
   }
 }
 
@@ -95,6 +114,26 @@ export async function GET(request) {
     const { userId } = session
     const q = await sql()
     const params = new URL(request.url).searchParams
+
+    if (params.get('push') === 'key') {
+      return Response.json({ publicKey: pushConfigured() ? process.env.VAPID_PUBLIC_KEY : null })
+    }
+
+    const orders = params.get('orders')
+    if (orders) {
+      const shop = await ownShop(q, userId)
+      if (!shop) return Response.json({ orders: [], hasMore: false, newCount: 0 })
+      const [{ n }] = await q.query(`select count(*)::int as n from orders where shop_id = $1::bigint and status = 0`, [shop.id])
+      if (orders === 'count') return Response.json({ newCount: n })
+      const status = STATUSES.indexOf(orders)
+      const offset = Math.max(0, parseInt(params.get('offset'), 10) || 0)
+      const rows = await q.query(
+        `select ${ORDER_COLS} from orders where shop_id = $1::bigint ${status >= 0 ? 'and status = $2' : ''}
+         order by created_at desc limit ${PAGE + 1} offset ${offset}`,
+        status >= 0 ? [shop.id, status] : [shop.id],
+      )
+      return Response.json({ orders: rows.slice(0, PAGE).map(orderOut), hasMore: rows.length > PAGE, newCount: n })
+    }
 
     if (params.get('mine')) {
       const shop = await ownShop(q, userId)
@@ -271,21 +310,101 @@ export async function PUT(request) {
     const items = body.items === undefined ? null : cleanItems(body.items)
 
     const q = await sql()
-    const fields = [name, str(s.address, 300), str(s.city, 60), str(s.mobile, 20), str(s.upiId, 80), str(s.upiName, 80), str(s.upiMobile, 20), s.isPublic === true]
+    const minOrder = Math.max(0, Math.min(Number(s.minOrder) || 0, 1_000_000))
+    const fields = [
+      name, str(s.address, 300), str(s.city, 60), str(s.mobile, 20), str(s.upiId, 80), str(s.upiName, 80), str(s.upiMobile, 20), s.isPublic === true,
+      str(s.orderWhatsapp, 20), s.ordersOn === true, s.closed === true, Math.round(minOrder * 100),
+    ]
     // owner_id is unique, so this creates the caller's shop once and updates it afterwards.
     // The slug is set only on creation: shared links keep working when the name changes.
     const [shop] = await q.query(
-      `insert into shops (owner_id, slug, name, address, city, mobile, upi_id, upi_name, upi_mobile, is_public)
-       values ($1::bigint, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `insert into shops (owner_id, slug, name, address, city, mobile, upi_id, upi_name, upi_mobile, is_public,
+                          order_whatsapp, orders_on, closed, min_order_paise)
+       values ($1::bigint, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        on conflict (owner_id) do update set
          name = excluded.name, address = excluded.address, city = excluded.city, mobile = excluded.mobile,
          upi_id = excluded.upi_id, upi_name = excluded.upi_name, upi_mobile = excluded.upi_mobile,
-         is_public = excluded.is_public, updated_at = now()
+         is_public = excluded.is_public, order_whatsapp = excluded.order_whatsapp, orders_on = excluded.orders_on,
+         closed = excluded.closed, min_order_paise = excluded.min_order_paise, updated_at = now()
        returning ${SHOP_COLS}`,
       [userId, slugify(name), ...fields],
     )
     if (items) await saveItems(q, shop.id, items)
     return Response.json({ shop: shopOut(shop, userId), items: await listItems(q, shop.id) })
+  } catch (e) {
+    return fail(e)
+  }
+}
+
+export async function PATCH(request) {
+  try {
+    const session = await getSession(request, process.env)
+    if (!session) return unauthorized()
+    const code = str(new URL(request.url).searchParams.get('order'), 20)
+    const body = (await request.json().catch(() => null)) ?? {}
+    const status = body.status === undefined ? null : STATUSES.indexOf(body.status)
+    if (status === -1) throw httpError(400, 'Status galat hai')
+    const billId = body.billId === undefined ? null : str(body.billId, 48)
+    const q = await sql()
+    // Only an order of the caller's own shop can change
+    const [row] = await q.query(
+      `update orders o set status = coalesce($3::smallint, o.status), bill_id = coalesce($4, o.bill_id)
+       from shops s
+       where o.code = $2 and o.shop_id = s.id and s.owner_id = $1::bigint
+       returning ${ORDER_COLS.split(', ').map((c) => `o.${c}`).join(', ')}`,
+      [session.userId, code, status, billId || null],
+    )
+    if (!row) throw httpError(404, 'Order nahi mila')
+    return Response.json({ order: orderOut(row) })
+  } catch (e) {
+    return fail(e)
+  }
+}
+
+// A push subscription is the browser's address for this phone: a push-service URL plus two keys
+function cleanSubscription(body) {
+  const endpoint = str(body?.endpoint, 1000)
+  const p256dh = str(body?.keys?.p256dh, 200)
+  const auth = str(body?.keys?.auth, 100)
+  if (!/^https:\/\//.test(endpoint) || !p256dh || !auth) throw httpError(400, 'Notification ki jaankari galat hai')
+  return { endpoint, p256dh, auth }
+}
+
+export async function POST(request) {
+  try {
+    const session = await getSession(request, process.env)
+    if (!session) return unauthorized()
+    if (!new URL(request.url).searchParams.has('push')) throw httpError(404, 'Not found')
+    if (!pushConfigured()) throw httpError(503, 'Server pe notification abhi set nahi hai')
+    const sub = cleanSubscription(await request.json().catch(() => null))
+    const q = await sql()
+    // One row per phone; a phone that changes account moves to the new account
+    await q.query(
+      `insert into push_subs (user_id, endpoint, p256dh, auth) values ($1::bigint, $2, $3, $4)
+       on conflict (endpoint) do update set user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth`,
+      [session.userId, sub.endpoint, sub.p256dh, sub.auth],
+    )
+    // Keep it small: at most 10 phones per account (oldest go first)
+    await q.query(
+      `delete from push_subs where user_id = $1::bigint and id not in
+         (select id from push_subs where user_id = $1::bigint order by created_at desc limit 10)`,
+      [session.userId],
+    )
+    return Response.json({ ok: true })
+  } catch (e) {
+    return fail(e)
+  }
+}
+
+export async function DELETE(request) {
+  try {
+    const session = await getSession(request, process.env)
+    if (!session) return unauthorized()
+    if (!new URL(request.url).searchParams.has('push')) throw httpError(404, 'Not found')
+    const body = (await request.json().catch(() => null)) ?? {}
+    const q = await sql()
+    await q.query(`delete from push_subs where user_id = $1::bigint and endpoint = $2`, [session.userId, str(body.endpoint, 1000)])
+    return Response.json({ ok: true })
   } catch (e) {
     return fail(e)
   }

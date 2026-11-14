@@ -16,6 +16,32 @@ export async function loadMyShop() {
   return data
 }
 
+/** Number of new online orders, for the badges; checked now and every minute while the app is open */
+export function watchNewOrders() {
+  const check = async () => {
+    const s = useBillStore.getState()
+    if (!s.shopMeta || !navigator.onLine || document.visibilityState !== 'visible') return
+    try {
+      const { newCount } = await api('/api/shops?orders=count')
+      useBillStore.setState({ newOrders: newCount })
+    } catch {
+      // offline / server busy: keep the last count
+    }
+  }
+  check()
+  setInterval(check, 60_000)
+  document.addEventListener('visibilitychange', check)
+}
+
+/** An online order's bill reached history: mark the order so it isn't billed twice */
+export async function linkOrderToBill(code, billId) {
+  try {
+    await api(`/api/shops?order=${encodeURIComponent(code)}`, { method: 'PATCH', body: { billId } })
+  } catch {
+    // not fatal: the bill itself is saved; the order just won't show "Bill ban gaya"
+  }
+}
+
 /** Problems that block saving, in words for the owner (empty = ok) */
 export function shopProblems(s = useBillStore.getState()) {
   const problems = []

@@ -7,6 +7,7 @@ import BottomBar from '../components/BottomBar'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { useBillExport } from '../components/BillExport'
 import { saveDraft } from '../utils/billSync'
+import { linkOrderToBill } from '../utils/shopSync'
 import { showToast } from '../store/useToast'
 
 export default function BillPreview() {
@@ -21,7 +22,8 @@ export default function BillPreview() {
 
   // A bill that reached the preview goes to history (same draft = same entry, updated if edited)
   useEffect(() => {
-    saveDraft()
+    const { draftOrder, draftId } = useBillStore.getState()
+    saveDraft().then((saved) => saved && draftOrder && linkOrderToBill(draftOrder, draftId))
   }, [])
 
   const startNew = () => {

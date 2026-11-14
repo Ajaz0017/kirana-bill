@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import {
-  ChevronDown, CloudUpload, Download, Eye, Globe, LineChart, Link2, LoaderCircle, Lock, Package, PackageX, Pencil, Plus, QrCode, Search, Share2, Store, X,
+  ChevronDown, CloudUpload, ShoppingBag, Download, Eye, Globe, LineChart, Link2, LoaderCircle, Lock, Package, PackageX, Pencil, Plus, QrCode, Search, Share2, Store, X,
 } from 'lucide-react'
 import { useBillStore, newId } from '../../store/useBillStore'
 import { showToast } from '../../store/useToast'
@@ -90,6 +90,16 @@ function FilterChips({ value, onChange, chips }) {
   )
 }
 
+const Toggle = ({ label, hint, checked, disabled, onChange }) => (
+  <label className={`flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-3.5 py-3 ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
+    <span>
+      <span className="block text-sm font-semibold">{label}</span>
+      {hint && <span className="block text-xs text-zinc-500">{hint}</span>}
+    </span>
+    <input type="checkbox" className="size-5 shrink-0 accent-violet-600" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+  </label>
+)
+
 // Shop name/address, UPI and Private/Public: set once, so folded away under a one-line summary
 function ShopDetails({ open, onToggle }) {
   const shopInfo = useBillStore((s) => s.shopInfo)
@@ -118,9 +128,9 @@ function ShopDetails({ open, onToggle }) {
           <Store className="size-4.5" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block font-bold">Dukaan, UPI, Private/Public</span>
+          <span className="block font-bold">Dukaan, UPI, Public, Online order</span>
           <span className="block truncate text-xs text-zinc-500">
-            {[shopInfo.address || shopInfo.city, shopInfo.upiId ? 'UPI set hai' : 'UPI nahi', shopPublic ? 'Public' : 'Private'].filter(Boolean).join(' · ')}
+            {[shopInfo.address || shopInfo.city, shopInfo.upiId ? 'UPI set hai' : 'UPI nahi', shopPublic ? 'Public' : 'Private', shopPublic && shopInfo.ordersOn && (shopInfo.closed ? 'Aaj band' : 'Online order chalu')].filter(Boolean).join(' · ')}
           </span>
         </span>
         <ChevronDown className={`size-4 shrink-0 text-zinc-400 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -149,7 +159,7 @@ function ShopDetails({ open, onToggle }) {
                 <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Shop kaun dekh sake">
                   {[
                     { value: false, icon: Lock, title: 'Private', text: 'Sirf aap' },
-                    { value: true, icon: Globe, title: 'Public', text: 'Har login user rate dekh sake' },
+                    { value: true, icon: Globe, title: 'Public', text: 'Koi bhi link / QR se rate dekh sake' },
                   ].map(({ value, icon: Icon, title, text }) => {
                     const on = shopPublic === value
                     return (
@@ -162,12 +172,24 @@ function ShopDetails({ open, onToggle }) {
                     )
                   })}
                 </div>
-                <p className="text-xs text-zinc-500">Public shop koi bhi dekh sakta hai, badal sirf aap sakte hain.</p>
+                <p className="text-xs text-zinc-500">Public shop ki rate list customer bina login ke dekh sakte hain (QR / link se). Badal sirf aap sakte hain, UPI kabhi nahi dikhta.</p>
                 {shopMeta?.isPublic && (
                   <button type="button" onClick={shareLink} className="btn-ghost w-full py-3">
-                    <Link2 className="size-4" /> Shop ka link share karein
+                    <Link2 className="size-4" /> Customers ko link bhejein
                   </button>
                 )}
+              </div>
+              <div className="space-y-3">
+                <p className="flex items-center gap-1.5 text-sm font-bold"><ShoppingBag className="size-4 text-violet-600" /> Online order</p>
+                <Toggle label="Online order lena" hint={shopPublic ? 'Customer rate list se order karke WhatsApp pe bhejenge' : 'Pehle shop Public karein'}
+                  checked={!!shopInfo.ordersOn} disabled={!shopPublic} onChange={(v) => editShopInfo({ ordersOn: v })} />
+                <Toggle label="Aaj dukaan band hai" hint="Rate list dikhegi, order nahi le payenge" checked={!!shopInfo.closed} onChange={(v) => editShopInfo({ closed: v })} />
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Order ka WhatsApp" type="tel" inputMode="tel" placeholder={shopInfo.mobile || '98XXXXXXXX'} {...f('orderWhatsapp')} />
+                  <Field label="Minimum order ₹" inputMode="decimal" placeholder="0" id="shop-minOrder"
+                    value={shopInfo.minOrder ? String(shopInfo.minOrder) : ''} onChange={(e) => editShopInfo({ minOrder: cleanDecimal(e.target.value) })} />
+                </div>
+                <p className="text-xs text-zinc-500">WhatsApp khaali chhodein to shop ka mobile lagega. Order aate hi Shops → Orders mein dikhega.</p>
               </div>
             </div>
           </motion.div>

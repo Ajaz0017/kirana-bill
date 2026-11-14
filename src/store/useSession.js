@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { api } from '../utils/api'
+import { disablePush } from '../utils/push'
 
 // Last logged-in user, so the installed app still opens offline
 const CACHE = 'kb_user'
@@ -39,6 +40,8 @@ export async function loadUser() {
 }
 
 export async function logout() {
+  // This phone stops getting the shop's order notifications (the next account here shouldn't)
+  await disablePush().catch(() => {})
   await fetch('/api/auth', { method: 'DELETE' }).catch(() => {})
   writeCache(null)
   location.replace('/login.html')

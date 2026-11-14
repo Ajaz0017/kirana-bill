@@ -15,6 +15,7 @@ export default function BottomNav() {
   const tab = useBillStore((s) => s.tab)
   const pending = useBillStore((s) => Object.keys(s.pendingBills).length)
   const shopUnsaved = useBillStore((s) => s.shopDirty)
+  const newOrders = useBillStore((s) => s.newOrders)
   const setTab = useBillStore((s) => s.setTab)
 
   return (
@@ -47,8 +48,12 @@ export default function BottomNav() {
                 {t === 'bills' && pending > 0 && (
                   <span className="absolute top-0 right-2 size-2.5 rounded-full bg-amber-500 ring-2 ring-white" title={`${pending} bill sync baaki`} />
                 )}
-                {t === 'shops' && shopUnsaved && (
-                  <span className="absolute top-0 right-2 size-2.5 rounded-full bg-amber-500 ring-2 ring-white" title="Shop save baaki" />
+                {t === 'shops' && newOrders > 0 ? (
+                  <span className="absolute -top-1 right-1 grid h-4.5 min-w-4.5 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-white" title={`${newOrders} naye order`}>
+                    {newOrders > 9 ? '9+' : newOrders}
+                  </span>
+                ) : (
+                  t === 'shops' && shopUnsaved && <span className="absolute top-0 right-2 size-2.5 rounded-full bg-amber-500 ring-2 ring-white" title="Shop save baaki" />
                 )}
               </span>
               {label}

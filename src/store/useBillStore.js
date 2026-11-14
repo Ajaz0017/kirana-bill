@@ -36,10 +36,15 @@ const emptyShop = () => ({
   upiMobile: '',
   stamp: 'default',
   signature: 'default',
+  // Online orders from the public shop page (Phase 8)
+  orderWhatsapp: '',
+  ordersOn: false,
+  closed: false,
+  minOrder: 0,
 })
 
 // Shop fields that live in the cloud shop (stamp/signature stay on the phone: big images)
-export const SHOP_CLOUD_FIELDS = ['name', 'address', 'city', 'mobile', 'upiId', 'upiName', 'upiMobile']
+export const SHOP_CLOUD_FIELDS = ['name', 'address', 'city', 'mobile', 'upiId', 'upiName', 'upiMobile', 'orderWhatsapp', 'ordersOn', 'closed', 'minOrder']
 
 // Bottom navigation, left to right
 export const TABS = ['home', 'bills', 'shops', 'settings', 'profile']
@@ -70,7 +75,9 @@ export const useBillStore = create(
       shopItems: [], // rate list: { id, name, unit, rate, category, inStock, changedDay }; new items have a local id
       shopDirty: false, // edits not yet saved to the server
       // Not persisted: which Shops sub-page is open
-      shopTab: 'mine', // 'mine' | 'public'
+      shopTab: 'mine', // 'mine' | 'orders' | 'public'
+      newOrders: 0, // online orders not looked at yet (badge), refreshed every minute
+      draftOrder: null, // code of the online order the current bill was made from
       shopView: null, // slug of a shop opened read-only (public list or a shared link)
 
       goTo: (step) => set((s) => ({ step, dir: step >= s.step ? 1 : -1 })),
@@ -91,10 +98,29 @@ export const useBillStore = create(
           return { pendingBills: rest }
         }),
 
+      // "Bill banayein" on an online order: its items and customer become the bill being made
+      loadOrder: (order) =>
+        set((s) => ({
+          draftId: newId(),
+          draftOrder: order.code,
+          items: order.items.map((i) => ({ id: newId(), name: i.name, qty: i.qty, unit: i.unit, rate: i.rate, rateUnit: i.rateUnit, amount: i.amount })),
+          details: {
+            ...emptyDetails(s.lastInvoiceNo),
+            customerName: order.customer.name,
+            customerMobile: order.customer.mobile,
+            customerAddress: order.customer.delivery ? order.customer.address : '',
+          },
+          tab: 'home',
+          shopView: null,
+          step: 0,
+          dir: -1,
+        })),
+
       // Open a saved bill on Home: edit it in place, or start a new bill from a copy of it
       loadBill: ({ id, data }, { copy = false } = {}) =>
         set((s) => ({
           draftId: copy ? newId() : id,
+          draftOrder: null,
           items: data.items.map((i) => ({ ...i, id: newId() })),
           details: copy
             ? { ...emptyDetails(s.lastInvoiceNo), customerName: data.details.customerName ?? '', customerAddress: data.details.customerAddress ?? '', customerMobile: data.details.customerMobile ?? '' }
@@ -167,7 +193,7 @@ export const useBillStore = create(
         set((s) => {
           const no = parseInt(s.details.invoiceNo, 10)
           const last = Number.isFinite(no) ? Math.max(no, s.lastInvoiceNo) : s.lastInvoiceNo
-          return { lastInvoiceNo: last, items: [], details: emptyDetails(last), draftId: newId(), step: 0, dir: -1 }
+          return { lastInvoiceNo: last, items: [], details: emptyDetails(last), draftId: newId(), draftOrder: null, step: 0, dir: -1 }
         }),
     }),
     {
@@ -176,8 +202,9 @@ export const useBillStore = create(
       skipHydration: true,
       partialize: ({
         step, draftId, pendingBills, items, details, shopInfo, lastInvoiceNo, knownItems, nameFixes,
-        shopMeta, shopPublic, shopItems, shopDirty,
+        shopMeta, shopPublic, shopItems, shopDirty, draftOrder,
       }) => ({
+        draftOrder,
         shopMeta,
         shopPublic,
         shopItems,

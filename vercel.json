@@ -1,5 +1,21 @@
 {
   "functions": {
-    "api/scan.js": { "maxDuration": 60 }
-  }
+    "api/scan.js": {
+      "maxDuration": 60
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/s/:slug",
+      "destination": "/shop.html"
+    },
+    {
+      "source": "/o/:code",
+      "destination": "/shop.html"
+    },
+    {
+      "source": "/orders",
+      "destination": "/shop.html"
+    }
+  ]
 }

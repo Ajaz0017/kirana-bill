@@ -9,6 +9,7 @@ import { installApp, useInstall } from '../store/useInstall'
 import { showToast } from '../store/useToast'
 import BottomSheet from '../components/BottomSheet'
 import ConfirmDialog from '../components/ConfirmDialog'
+import NotifySetting from '../components/NotifySetting'
 import { api } from '../utils/api'
 import { inr } from '../utils/format'
 
@@ -261,6 +262,7 @@ export default function ProfilePage() {
         <p className="field-label px-1">Account aur app</p>
         <ul className="card divide-y divide-zinc-100 overflow-hidden">
           <Row icon={KeyRound} label="Password badlein" sub="Purana password chahiye hoga" onClick={() => setPwOpen(true)} />
+          <NotifySetting variant="row" />
           {canInstall && !installed && (
             <Row icon={Download} label="Phone pe app install karein" sub="Home screen se seedha khulega, offline bhi" onClick={install} tone="bg-emerald-50 text-emerald-600" />
           )}

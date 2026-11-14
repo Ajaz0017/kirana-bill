@@ -70,6 +70,38 @@ const SCHEMA = [
   // and that slab's rate in paise. Empty = one rate for any qty.
   `alter table shop_items add column if not exists slab_qty int[] not null default '{}'`,
   `alter table shop_items add column if not exists slab_paise int[] not null default '{}'`,
+  // Online orders (Phase 8): the owner's switches, and orders placed from the public page
+  `alter table shops add column if not exists order_whatsapp text not null default ''`,
+  `alter table shops add column if not exists orders_on boolean not null default false`,
+  `alter table shops add column if not exists closed boolean not null default false`,
+  `alter table shops add column if not exists min_order_paise int not null default 0`,
+  `create table if not exists orders (
+     id bigint generated always as identity primary key,
+     shop_id bigint not null references shops(id) on delete cascade,
+     code text not null unique,
+     cust_name text not null,
+     cust_mobile text not null,
+     delivery boolean not null default false,
+     address text not null default '',
+     note text not null default '',
+     items jsonb not null,
+     total_paise int not null,
+     status smallint not null default 0,
+     bill_id text,
+     created_at timestamptz not null default now()
+   )`,
+  `create index if not exists orders_shop_recent on orders (shop_id, created_at desc)`,
+  // New-order notifications (Phase 8.2): one row per owner phone/browser, ~0.5–1 KB each.
+  // Notifications themselves are never stored.
+  `create table if not exists push_subs (
+     id bigint generated always as identity primary key,
+     user_id bigint not null references users(id) on delete cascade,
+     endpoint text not null unique,
+     p256dh text not null,
+     auth text not null,
+     created_at timestamptz not null default now()
+   )`,
+  `create index if not exists push_subs_user on push_subs (user_id)`,
 ]
 
 let ready = null

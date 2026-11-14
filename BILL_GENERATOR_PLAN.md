@@ -72,6 +72,15 @@ Ek lightweight web app jo kirana dukaandaar ke liye **Bill of Supply** banata ha
   - Poori rate list ka **PDF / image** banakar WhatsApp pe bhejna (category ke hisaab se, stock wale items)
   - Dukaan pe lagane ke liye **QR poster** (A4 PDF): scan karte hi shop ki public rate list khule. Ye sirf Public shop ke liye
 
+### Public rate list aur online order (Phase 8)
+
+- QR / link (`/s/<shop-link>`) kholne wale customer ko **login nahi karna padega**: Public shop ki rate list seedha khulegi
+- Customer wahin se items chunke **cart** banayega (qty + unit, slab rate apne aap), naam + mobile + delivery/pickup bharke **Order bhejega**
+- Order database mein save hoga, aur **dukaan ki WhatsApp chat** order ke poore message ke saath khulegi. Customer **Send** dabayega (koi bhi website khud se WhatsApp pe file nahi bhej sakti). Message mein order ka link hoga, jahan PDF / image bhi
+- Owner ke app mein **Orders**: naya → taiyaar → de diya. Bill apne aap nahi banta: owner order mein **"Bill banayein"** dabaye tab
+- Owner ke haath mein control: online order on/off, order ka WhatsApp number, "aaj band hai", minimum order
+- **Mere orders (Phase 8.1)**: customer ko usi phone pe pichhle 90 din ke apne orders aur unka taaza status (Bheja / Taiyaar / De diya / Cancel) dikhega, saath mein "Dobara order karein". Login nahi chahiye
+
 ---
 
 ## 2. OCR approach – kyun AI Vision model?
@@ -534,6 +543,187 @@ Bills sabse zyada jagah lete hain (~3 KB/bill). 10 dukaanein × 30 bills/din ≈
 - [ ] Profile mein "Database kitna bhara" dikhana (`pg_database_size`), 80% pe chetavani
 - [ ] Bahut purane bills (jaise 2 saal+) ka sirf summary rakhna, poora bill PDF/Backup se download karke
 
+### Phase 8: Public rate list + Online order
+
+Abhi QR / link scan karne wale customer ko login karna padta hai. Is phase mein Public shop ki rate list bina login ke khulegi, aur customer wahin se order karega.
+
+**Tay hua (faisle):**
+
+- Order dukaan tak: `wa.me` link, jisme order ka poora message pehle se likha ho, aur order ka link (PDF / image). Customer **Send** dabaye. Auto bhejne ke liye WhatsApp Business API chahiye (paid, Meta verification), wo Later mein
+- Orders **database mein save** honge, app mein Orders list + order se bill. 90 din purane order apne aap mitenge
+- Customer se: **naam + mobile** zaroori, **delivery / pickup** (delivery pe pata), note optional
+
+**Customer ka flow:**
+
+`/s/<shop-link>` (QR / link) → rate list (search, category, slab rate) → `+` se cart (qty + unit, jaise 250 g / 2 kg) → neeche "3 items · ₹245 · Order karein" → naam, mobile, delivery/pickup (+ pata), note → **Order bhejein** → order save → WhatsApp mein dukaan ki chat, order ka message pehle se likha → customer Send → "Order bhej diya" screen + order ka link
+
+**Kaise bana hoga:**
+
+- **Alag halka public page** `shop.html` (Vite ka doosra entry, `src/public/`): customer ke phone mein billing app ka code nahi jayega, aur billing app pehle ki tarah login ke peeche rahega
+  - `vercel.json` rewrite: `/s/:slug` aur `/o/:code` → `/shop.html`
+  - `middleware.js` matcher mein `shop.html`, `s/`, `o/`, `api/public` khule
+- **Nayi API `api/public.js` (bina login):**
+
+| Request                     | Kaam                                                                                                                                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/public?shop=X`    | Sirf Public shop: naam, pata, shehar, order WhatsApp, online order on/off, band hai?, minimum order, items + slabs. UPI / email / owner id kabhi nahi      |
+| `POST /api/public?order`    | `{ slug, customer: { name, mobile, delivery, address, note }, items: [{ id, qty, unit }] }`. **Rate aur total server khud database se lagata hai** (slab + gm/kg), browser ka rate kabhi nahi maana jata. Jawab: `{ code, total, waNumber, waText }` |
+| `GET /api/public?order=CODE`| Order dekhna (code 10 akshar ka random, guess nahi ho sakta); yahan se PDF / image                                                                          |
+
+- **Owner ke liye `api/shops.js` mein:** `GET ?orders=1` (apne orders, naye pehle), `PATCH ?order=CODE { status }`
+- Kul functions: auth, bills, profile, scan, shops, public = **6** (Vercel Hobby ki 12 ki limit mein)
+
+**Database:**
+
+```sql
+-- shops mein naye columns
+order_whatsapp  text default '',        -- khaali = shop ka mobile
+orders_on       boolean default false,  -- "Online order lena" switch
+closed          boolean default false,  -- "Aaj dukaan band hai"
+min_order_paise int default 0
+
+orders (
+  id          bigint primary key,
+  shop_id     bigint references shops on delete cascade,
+  code        text unique,              -- link ke liye random 10 akshar
+  cust_name, cust_mobile, delivery boolean, address, note,
+  items       jsonb,                    -- chhota format: [["Chawal", 250, "gm", 7000, "kg", 1750], ...] (paise mein)
+  total_paise int,
+  status      smallint default 0,       -- 0 naya, 1 taiyaar, 2 de diya, 3 cancel
+  bill_id     text,                     -- owner ne "Bill banayein" se bill banaya to us bill ki id (khaali = abhi bill nahi bana)
+  created_at  timestamptz default now()
+)
+-- index (shop_id, created_at desc); har naye order pe 90 din se purane orders delete
+```
+
+Andaza: ek order ~0.5–1 KB. 100 shops × 20 order/din × 90 din ≈ 1.8 lakh orders ≈ 90–180 MB, aur 90 din ke baad isse zyada nahi badhega.
+
+**App mein (owner):**
+
+- Shops tab ke sub-tabs: Meri Shop · **Orders** (naye orders ka badge) · Public shops. Naye order hon to neeche nav mein Shops pe bhi dot
+- Orders list: naya / taiyaar / de diya filter; customer, mobile (call / WhatsApp button), delivery ya pickup, pata, items, total, kitni der pehle aaya
+- **Bill apne aap nahi banega.** Order aane pe sirf Orders list mein dikhega; bill tabhi banega jab owner us order mein **"Bill banayein"** dabaye:
+  - Order ke items (qty, unit, rate, rateUnit) aur customer (naam, mobile, pata) Home ke draft mein bhar jayenge
+  - Owner wahan items / rate badal sakta hai (jaise koi item nahi tha), phir Details → Bill preview, aur bill pehle ki tarah history mein save
+  - Bill save hone pe order pe "Bill ban gaya" ka nishaan aur us bill ka link (order mein `bill_id`), taaki ek order ka do baar bill na bane
+  - Home pe pehle se koi adhoora bill ho to pehle poochhega ("Abhi wala bill hat jayega")
+  - Order ka status (taiyaar / de diya) owner khud badlega, bill banne se apne aap nahi
+- Naye order ka pata: app khula ho to har 60 second check, aur Orders kholte hi
+- Meri Shop → **Online order** settings: on/off, order ka WhatsApp number, aaj band hai, minimum order, public link `/s/<slug>` copy / share
+
+**Public page mein aur:**
+
+- Cart phone mein yaad rahe (`localStorage`); rate badal gaye hon to order se pehle naya total
+- "Pichhla order dobara" (isi phone pe)
+- Stock mein nahi wale items dikhenge, lekin `+` band
+- Shop band ho ya online order off → rate list dikhegi, order button nahi
+- Order se pehle chhota note: "Rate dukaan pe badal sakte hain"
+
+**Suraksha (access control):**
+
+- Sirf `is_public` shop ka data; private shop / galat link pe 404
+- Order sirf tab jab `orders_on` aur dukaan band nahi
+- Seemaayein: max 50 items, qty ki had, naam / pata / note ki lambai, mobile 10 ank
+- Spam rok: ek IP se 1 minute mein 3 se zyada order nahi (best-effort), ek mobile se ek shop pe ghante mein 5 se zyada nahi (database se gina), form mein chhupa honeypot field
+- Total aur rate server nikalta hai: customer browser mein rate badal kar sasta order nahi bana sakta
+- QR poster aur rate list ka link ab `/s/<slug>`; purana `/?shop=` login wale users ke liye chalta rahega
+
+**Kaam:**
+
+- [x] `shops` mein order columns, `orders` table (`bill_id` ke saath), har naye order pe 90 din purane order hatana
+- [x] `api/public.js`: public shop, order banana (rate / slab / gm-kg / total server pe), order dekhna; seemaayein, IP + mobile ki had, honeypot
+- [x] `shop.html` (alag halka entry, ~30 KB JS), `vercel.json` rewrites, `middleware.js` (`/s/`, `/o/`, `/api/public`, sirf `/assets` ki JS/CSS/font khuli; stamp/signature images login ke peeche)
+- [x] Public page pe service worker / manifest nahi (customer ke phone mein billing app cache nahi hota)
+- [x] Public page: rate list, search, category, slab rate, qty sheet (250 g / 500 g / 1 kg… + apni qty, live price), cart (phone mein yaad), "pichhla order dobara", checkout (naam, mobile, delivery/pickup + pata, note), WhatsApp message
+- [x] "Order taiyaar hai" screen (WhatsApp na khule to button) + order page (`/o/<code>`) + PDF / image
+- [x] Meri Shop: online order settings (on/off, aaj band, order ka WhatsApp, minimum order) + customers ka link; QR poster / rate list / share ab `/s/<slug>`
+- [x] Shops → Orders sub-tab: naye / taiyaar / de diya / sab, call + WhatsApp, status, badge (nav + sub-tab) + har minute check
+- [x] "Bill banayein" (apne aap nahi): order → Home draft; bill save pe order mein `bill_id` + "Bill ban gaya · dekhein"; status apne aap nahi badalta
+- [x] Tests (PGlite): middleware ke khule / band raaste, bina login rate list, private = 404, UPI kabhi public nahi, browser ka rate ignore, slab + gm/kg, saari seemaayein + spam rok, band / order off, owner hi apne orders dekhe / badle, bill link, 90 din cleanup
+- [x] UI test (headless Chrome): owner shop + online order → customer bina login order (WhatsApp mein sahi number + message) → order page → owner badge → Orders → Bill banayein → bill → "Bill ban gaya"
+- [ ] Vercel pe deploy karke asli phone pe test (`api/public.js` `src/utils/units.js` import karta hai, deploy pe check karna)
+
+### Phase 8.1: Customer ke "Mere orders"
+
+Order bhejne ke baad customer ko kahin nahi dikhta ki usne kya mangaya tha, ya dukaan ne order taiyaar kiya ya nahi. Is phase mein order ka chhota record customer ke phone (localStorage) mein save hoga, aur "Mere orders" page server se un orders ka taaza status mangwayega. Login nahi chahiye: order ka random 10 akshar ka code hi chaabi hai.
+
+**Customer ko kya dikhega:**
+
+- Shop page (`/s/<slug>`) ke upar **"Mere orders (3)"** ka button (sirf tab jab is phone se pehle order kiye hon)
+- **"Mere orders" page (`/orders`)**: is phone se kiye saare orders (saari dukaanon ke), naye pehle. Har order mein:
+  - dukaan ka naam, date / time, total, kitne items
+  - **status**: Bheja (dukaan ne abhi dekha nahi) · Taiyaar hai · De diya · Cancel
+  - order dekhein (`/o/<code>`, items + PDF / image)
+  - **"Dobara order karein"**: wahi items us dukaan ke cart mein, aaj ke rate se (stock mein nahi wale chhoot jayenge)
+  - WhatsApp message nahi gaya tha to "WhatsApp pe bhejein" dobara
+  - "Hatayein" (sirf is phone ki list se)
+- Page khula ho to status har minute apne aap refresh; "Order taiyaar hai" screen pe bhi status
+
+**Kaise bana hoga:**
+
+- **Phone mein (localStorage `kb_orders`)**: har order ka record `{ code, slug, shopName, total, itemCount, createdAt, cart }` (`cart` = "dobara order" ke liye `itemId → { qty, unit }`). Max 50 orders; 90 din se purane apne aap hatenge (server bhi 90 din baad order mita deta hai)
+- **Nayi API `GET /api/public?orders=code1,code2,…`** (bina login, max 50 code): jawab `[{ code, status, total, createdAt }]`, sirf un codes ka jo bheje gaye. Na koi list, na customer ka naam / mobile / pata. Jo code server pe nahi mila (90 din purana / galat) → "Purana order", phone se hata sakte hain
+- **Routing**: `vercel.json` mein `/orders` → `/shop.html`, `middleware.js` ke `isOpenPath` mein `/orders`, local dev ke liye `vite.config.js` mein bhi
+- Kul functions pehle jaise **6** (ye `api/public.js` mein hi)
+
+**Seemaayein:**
+
+- List **sirf usi phone / browser** mein. Doosre phone pe, incognito mein, ya browser ka data saaf karne pe nahi dikhegi
+- Har device pe dikhane ke liye customer ka login ya mobile OTP chahiye (SMS ka paisa), wo Later mein
+- Phone jiske haath mein ho wo is phone ke orders dekh sakta hai (jaise WhatsApp chat); isliye status wali API customer ka mobile / pata nahi deti
+
+**Kaam:**
+
+- [x] Order bhejne pe record `kb_orders` mein (max 50, 90 din), WhatsApp message bhi (dobara bhejne ke liye)
+- [x] `GET /api/public?orders=…`: sirf diye gaye codes ka status / total / time (max 50), naam / mobile / pata nahi; galat codes chupchaap chhoot jaate hain
+- [x] `/orders` page: list, live status (Bheja / Taiyaar hai / De diya / Cancel / Purana), dekhein, dobara order (aaj ke rate, stock-out items chhoot jaate hain), WhatsApp dobara (jab tak "Bheja"), hatayein, har minute refresh
+- [x] Shop page pe "Mere orders (N)" button; order bhejne ke baad wali screen ("Order save ho gaya") pe live status + "Mere orders" link
+- [x] `vercel.json` / `middleware.js` / `vite.config.js` mein `/orders`
+- [x] Tests (PGlite): sirf diye codes, naam / mobile / pata kabhi nahi, galat codes, 50 se zyada mana, 90 din purana order "nahi mila"; UI test: order → live status → owner "taiyaar" → Mere orders mein "Taiyaar hai" → dobara order (sirf stock wala, naya rate) → list se hatana (owner ke paas order rehta hai)
+- [ ] Vercel pe deploy karke asli phone pe test
+
+**Phase 8 / 8.1 ke baad (Later):**
+
+- [ ] **Ghar pe delivery** wapas chalu karna: abhi checkout mein band hai (`src/public/ShopPage.jsx` mein commented, sirf "dukaan se lunga"). Database / API mein `delivery` + `address` pehle se hain
+
+- [ ] Mobile number + OTP se saare devices pe "Mere orders" (SMS ka paisa)
+- [ ] Status badalne pe customer ko notification (web push)
+
+### Phase 8.2: Naye order pe owner ko phone notification
+
+Order aane ka pata pehle sirf WhatsApp message se ya app khulne pe badge se chalta tha. Ab owner ek baar "Chalu karein" dabaye to naye order pe **phone mein notification** aati hai, app band ho tab bhi ("🛒 Naya order · ₹347.50 / Ramesh · 2 items"). Tap karte hi Orders khulta hai.
+
+**Free aur halka:**
+
+- Web Push browser ki apni push service se jaata hai (Chrome = Google, Firefox = Mozilla, iPhone = Apple): na account, na Firebase, na bill. Server pe free `web-push` library + ek baar banayi VAPID key
+- Database mein sirf har owner-phone ki ek subscription (~0.5–1 KB; max 10 phone / account). Notification khud save nahi hoti. Bekaar subscription (phone badla / permission hatayi) push service ke 404/410 jawab pe apne aap delete
+- iPhone pe sirf "Add to Home Screen" se install app mein (iOS 16.4+); battery saver mein kabhi thodi der
+
+**Kaise bana:**
+
+- `push_subs` table (user ke saath, account delete pe apne aap hat jaati hai)
+- `api/_push.js`: order banne pe us shop ke owner ke saare phones pe push (3 second se zyada customer ko nahi rokta; fail ho to bhi order save)
+- `api/shops.js`: `GET ?push=key`, `POST ?push` (is phone ko jodna), `DELETE ?push` (hatana) — functions abhi bhi 6
+- `public/push-sw.js` (Workbox service worker mein `importScripts`): notification dikhana, tap pe Orders kholna, khule app ka badge turant badhana
+- App: Shops → Orders ke upar "Naye order pe notification · Chalu karein", Profile mein bhi; logout pe is phone ki notification band (agla account ise na paaye)
+- Notification mein customer ka mobile nahi (lock screen pe dikhta hai)
+
+**Setup:** `npx web-push generate-vapid-keys` → `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` (aur chahein to `VAPID_SUBJECT`) `.env` aur Vercel mein. Key na ho to ye feature chupchaap band rehta hai.
+
+**Kaam:**
+
+- [x] `push_subs` table, subscribe / unsubscribe API, max 10 phone, account delete pe cascade
+- [x] Order pe push (sirf us shop ke owner ko), bekaar subscription delete, mobile number nahi, `urgency: high`, 6 ghante TTL
+- [x] Service worker: notification + tap pe Orders + khule app ka badge
+- [x] Orders / Profile mein "Chalu / Band", iPhone ke liye "Add to Home Screen" ki salah, block ho to settings ki salah; logout pe band
+- [x] Tests (PGlite + nakli web-push): key na ho to band, sirf apne shop owner ko push, payload, 410 pe delete, doosre ka unsubscribe nahi, phone ka account badalna, max 10, cascade; browser (production build): service worker mein push code, push aane pe sahi notification + badge, `/?open=orders` se Orders
+- [ ] Asli phone pe subscribe + order pe notification (headless Chrome mein push service nahi hoti, isliye ye wahan test nahi ho saka)
+
+- [ ] WhatsApp link preview (shop ka naam + photo), jiske liye server pe meta tags chahiye
+- [ ] Naye order pe push notification (PWA web push)
+- [ ] WhatsApp Business API se apne aap order bhejna (paid)
+- [ ] Order ke saath online payment (UPI link)
+
 ---
 
 ## 9. Setup & Testing
@@ -545,6 +735,7 @@ Bills sabse zyada jagah lete hain (~3 KB/bill). 10 dukaanein × 30 bills/din ≈
 | `AUTH_SECRET`                                                       | Login cookie sign karne ke liye (`openssl rand -hex 32`)                 |
 | `DATABASE_URL`                                                      | Neon connection string (Vercel Neon connect karne pe khud set karta hai) |
 | `SIGNUP_CODE`                                                       | Optional. Set ho to signup ke liye ye code chahiye                       |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`            | Optional. Naye order ki phone notification (`npx web-push generate-vapid-keys`) |
 | `GEMINI_API_KEY`                                                    | Scan ke liye (Google AI Studio free key)                                 |
 | `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `GLM_API_KEY`, `GLM_MODEL` | Scan models / fallback                                                   |
 
@@ -592,6 +783,12 @@ Bills sabse zyada jagah lete hain (~3 KB/bill). 10 dukaanein × 30 bills/din ≈
 | Koi doosre ki shop edit kare (Phase 6)      | Har edit request pe `owner_id = login user`, warna mana              |
 | Purana / galat rate (Phase 6)               | Har item pe "rate kab badla" date; bill mein rate badal sakte hain   |
 | Spam / nakli public shops (Phase 6)         | `SIGNUP_CODE`, aur baad mein Report / block                          |
+| Spam / nakli orders (Phase 8)               | IP + mobile pe had, honeypot, max items; owner online order band kar sake |
+| Purane rate pe order (Phase 8)              | Rate aur total server order ke waqt database se lagata hai; customer ko note "rate badal sakte hain" |
+| Dukaandaar ka number public (Phase 8)       | Order ka WhatsApp number alag rakh sakte hain; sirf Public shop pe dikhega |
+| Customer ka data (Phase 8)                  | Order sirf owner ko (login) ya random code wale link se; 90 din baad apne aap delete |
+| Phone badla / browser saaf kiya (Phase 8.1) | "Mere orders" list sirf usi phone pe; ye page pe saaf likha hoga. Har device ke liye OTP login Later mein |
+| Phone kisi aur ke haath (Phase 8.1)         | Status API sirf code ka status / total deti hai, naam / mobile / pata nahi; "Hatayein" se list se hata sakte hain |
 
 ---
 
@@ -616,3 +813,6 @@ Bills sabse zyada jagah lete hain (~3 KB/bill). 10 dukaanein × 30 bills/din ≈
 7. Shops (Phase 6) kaise kaam karengi?
    ans : Ek user ki sirf 1 shop. Shop ki rate list billing se judegi (item chunte hi rate auto-fill).
    Public shops ki list + search + share link. Settings wali "Aapki dukaan" shop se judegi aur cloud mein save hogi.
+8. Online order (Phase 8) kaise kaam karega?
+   ans : Public rate list bina login. Order `wa.me` message + order link se dukaan ki WhatsApp pe (customer Send dabaye).
+   Orders database mein save + app mein Orders list + order se bill, 90 din baad delete. Customer se naam + mobile + delivery/pickup (+ pata).

@@ -1,13 +1,20 @@
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Same paths middleware.js's matcher leaves open on Vercel (exact paths, or prefixes ending in "/")
-const PUBLIC_PATHS = ['/login.html', '/api/auth', '/favicon.svg', '/manifest.webmanifest', '/icons/', '/sw.js', '/registerSW.js']
-const isPublic = (path) => PUBLIC_PATHS.some((p) => (p.endsWith('/') ? path.startsWith(p) : path === p)) || path.startsWith('/workbox-')
+// Same paths middleware.js's matcher leaves open on Vercel (exact paths, or prefixes ending in "/").
+// The public shop pages (/s/, /o/, /api/public, built JS/CSS) are let through by middleware.js itself.
+const PUBLIC_PATHS = ['/login.html', '/api/auth', '/favicon.svg', '/manifest.webmanifest', '/icons/', '/sw.js', '/registerSW.js', '/push-sw.js']
+// Local dev only: Vite serves source modules from these paths, which the public shop page needs too
+const DEV_MODULES = ['/@', '/src/', '/node_modules/']
+const isPublic = (path) =>
+  PUBLIC_PATHS.some((p) => (p.endsWith('/') ? path.startsWith(p) : path === p)) ||
+  path.startsWith('/workbox-') ||
+  DEV_MODULES.some((p) => path.startsWith(p))
 
 // Node req -> Web Request, so the Vercel files run unchanged
 async function toRequest(req) {
@@ -48,6 +55,11 @@ const vercelLocal = (env) => {
           const gate = await middleware(request.clone())
           if (!gate.headers.get('x-middleware-next')) return send(res, gate)
         }
+        // Same as vercel.json rewrites: customers' shop / order links open the public page
+        if (/^\/[so]\/[^/]+$/.test(path) || path === '/orders') {
+          req.url = '/shop.html'
+          return nextMw()
+        }
         const api = path.match(/^\/api\/([\w-]+)$/)
         if (!api) return nextMw()
         const mod = await load(`/api/${api[1]}.js`).catch(() => null)
@@ -76,6 +88,9 @@ const vercelLocal = (env) => {
  */
 const pwa = VitePWA({
   registerType: 'autoUpdate',
+  // Registered from src/main.jsx (the billing app) only: customers opening the public shop page
+  // shouldn't download the whole app into their phone's cache
+  injectRegister: false,
   manifest: {
     name: 'Kirana Bill',
     short_name: 'Kirana Bill',
@@ -95,8 +110,10 @@ const pwa = VitePWA({
   },
   workbox: {
     globPatterns: ['**/*.{js,css,woff2,png,jpg,svg}'],
-    globIgnores: ['**/index.html', '**/login.html'],
+    globIgnores: ['**/index.html', '**/login.html', '**/shop.html'],
     navigateFallback: null,
+    // New-order notifications (Phase 8.2): push + notification-click handlers
+    importScripts: ['push-sw.js'],
     cleanupOutdatedCaches: true,
     runtimeCaching: [
       {
@@ -111,7 +128,28 @@ const pwa = VitePWA({
   },
 })
 
+// The PWA plugin adds the app's manifest link to every page (after all HTML hooks); the customers'
+// shop page must not offer to install the billing app, so it's taken out of the written file
+const noManifestOnShopPage = () => {
+  let outDir = 'dist'
+  return {
+    name: 'no-manifest-on-shop-page',
+    apply: 'build',
+    configResolved: (config) => {
+      outDir = resolve(config.root, config.build.outDir)
+    },
+    closeBundle: () => {
+      const file = resolve(outDir, 'shop.html')
+      if (existsSync(file)) writeFileSync(file, readFileSync(file, 'utf8').replace(/\s*<link rel="manifest"[^>]*>/g, ''))
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), tailwindcss(), vercelLocal(loadEnv(mode, process.cwd(), '')), pwa],
+  plugins: [react(), tailwindcss(), vercelLocal(loadEnv(mode, process.cwd(), '')), pwa, noManifestOnShopPage()],
+  build: {
+    // Two pages: the billing app (login needed) and the light public shop page for customers
+    rolldownOptions: { input: { main: resolve('index.html'), shop: resolve('shop.html') } },
+  },
 }))
