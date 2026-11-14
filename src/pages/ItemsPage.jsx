@@ -12,6 +12,7 @@ import AnimatedNumber from '../components/AnimatedNumber'
 import CameraScanner from '../components/CameraScanner'
 import ScanReview from '../components/ScanReview'
 import { scanBill } from '../utils/scanBill'
+import { applyShopRates } from '../utils/shopRates'
 import { inr, round } from '../utils/format'
 
 const FORM_ID = 'item-form'
@@ -65,9 +66,13 @@ export default function ItemsPage() {
     setScan({ id, status: 'loading', photo: preview })
     setScanOpen(true)
     try {
-      const { knownItems: known, nameFixes: fixes } = useBillStore.getState()
+      const { knownItems, nameFixes: fixes, shopItems } = useBillStore.getState()
+      // The shop's rate list spellings come first, so scanned names match its items
+      const known = [...new Set([...shopItems.map((i) => i.name), ...knownItems])]
       const result = await scanBill(file, { known, fixes })
-      setScan((s) => (s?.id === id ? { id, status: 'done', ...result } : s))
+      // Lines written without a rate get the shop's fixed rate
+      const rows = applyShopRates(result.rows, shopItems)
+      setScan((s) => (s?.id === id ? { id, status: 'done', ...result, rows } : s))
     } catch (e) {
       setScan((s) => (s?.id === id ? { id, status: 'error', photo: preview, error: e.message } : s))
     }
@@ -77,12 +82,13 @@ export default function ItemsPage() {
     rows.forEach(({ name, suggested, scannedName }) => {
       if (name.trim() !== suggested) useBillStore.getState().rememberFix(scannedName, name)
     })
-    rows.forEach(({ name, qty, unit, rate, amount }) =>
+    rows.forEach(({ name, qty, unit, rate, rateUnit, amount }) =>
       addItem({
         name: name.trim(),
         qty: parseFloat(qty) || '',
         unit,
         rate: parseFloat(rate) || '',
+        rateUnit: rateUnit ?? unit,
         amount: round(parseFloat(amount)),
       }),
     )

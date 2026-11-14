@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { useSyncExternalStore } from 'react'
+import { lazy, Suspense, useSyncExternalStore } from 'react'
 import { ReceiptIndianRupee, WifiOff } from 'lucide-react'
 import { useBillStore } from './store/useBillStore'
 import { useSession } from './store/useSession'
@@ -10,12 +10,15 @@ import Toast from './components/Toast'
 import ItemsPage from './pages/ItemsPage'
 import DetailsPage from './pages/DetailsPage'
 import BillPreview from './pages/BillPreview'
-import BillsPage from './pages/BillsPage'
 import SettingsPage from './pages/SettingsPage'
-import ProfilePage from './pages/ProfilePage'
+
+// Only needed on their own tabs, so they load separately (the service worker still caches them for offline)
+const BillsPage = lazy(() => import('./pages/BillsPage'))
+const ShopsPage = lazy(() => import('./pages/ShopsPage'))
+const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 
 const STEPS = [ItemsPage, DetailsPage, BillPreview]
-const TAB_PAGES = { bills: BillsPage, settings: SettingsPage, profile: ProfilePage }
+const TAB_PAGES = { bills: BillsPage, shops: ShopsPage, settings: SettingsPage, profile: ProfilePage }
 
 const slide = {
   enter: (dir) => ({ x: dir * 48, opacity: 0 }),
@@ -40,6 +43,7 @@ export default function App() {
   const dir = useBillStore((s) => s.dir)
   const hasItems = useBillStore((s) => s.items.length > 0)
   const viewing = useBillStore((s) => !!s.viewing)
+  const shopView = useBillStore((s) => s.shopView)
   const user = useSession((s) => s.user)
   const toast = useToast((s) => s.toast)
   const clearToast = useToast((s) => s.clear)
@@ -49,7 +53,7 @@ export default function App() {
   const step = hasItems ? storedStep : 0
   const home = tab === 'home'
   const Page = home ? STEPS[step] : TAB_PAGES[tab]
-  const pageKey = home ? `home-${step}` : tab
+  const pageKey = home ? `home-${step}` : tab === 'shops' && shopView ? `shop-${shopView}` : tab
   // The A4 bill gets more room on wide screens
   const wide = (home && step === 2) || (tab === 'bills' && viewing)
 
@@ -65,33 +69,42 @@ export default function App() {
       <div
         className={`mx-auto px-4 pt-5 pb-[calc(var(--nav-h)+env(safe-area-inset-bottom)+1rem)] ${wide ? 'max-w-[52rem]' : 'max-w-lg'} transition-[max-width] duration-500 print:max-w-none print:p-0`}
       >
-        <header className="mb-5 space-y-4 print:hidden">
-          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
-            <motion.span
-              whileHover={{ rotate: -8, scale: 1.05 }}
-              className="grid size-11 place-items-center rounded-2xl bg-linear-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/30"
-            >
-              <ReceiptIndianRupee className="size-6" />
-            </motion.span>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-lg leading-tight font-extrabold">Kirana Bill</h1>
-              {online ? (
-                <p className="truncate text-xs text-zinc-500">Welcome{user?.name ? `, ${user.name.split(' ')[0]}` : ''} 👋</p>
-              ) : (
-                <p className="flex items-center gap-1 text-xs font-semibold text-amber-600">
-                  <WifiOff className="size-3.5" /> Offline · scan aur sync nahi chalega
-                </p>
+        {/* Brand header + bill steps only on Home; other tabs start straight with their own title */}
+        {home ? (
+          <header className="mb-5 space-y-4 print:hidden">
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
+              <motion.span
+                whileHover={{ rotate: -8, scale: 1.05 }}
+                className="grid size-11 place-items-center rounded-2xl bg-linear-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/30"
+              >
+                <ReceiptIndianRupee className="size-6" />
+              </motion.span>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg leading-tight font-extrabold">Kirana Bill</h1>
+                {online ? (
+                  <p className="truncate text-xs text-zinc-500">Welcome{user?.name ? `, ${user.name.split(' ')[0]}` : ''} 👋</p>
+                ) : (
+                  <p className="flex items-center gap-1 text-xs font-semibold text-amber-600">
+                    <WifiOff className="size-3.5" /> Offline · scan aur sync nahi chalega
+                  </p>
+                )}
+              </div>
+              {user && (
+                <button type="button" onClick={() => setTab('profile')} aria-label="Profile" title={user.email}
+                  className="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white/70 font-bold text-violet-700 transition hover:border-violet-300">
+                  {(user.name || user.email).trim().charAt(0).toUpperCase()}
+                </button>
               )}
-            </div>
-            {user && tab !== 'profile' && (
-              <button type="button" onClick={() => setTab('profile')} aria-label="Profile" title={user.email}
-                className="grid size-10 place-items-center rounded-xl border border-zinc-200 bg-white/70 font-bold text-violet-700 transition hover:border-violet-300">
-                {(user.name || user.email).trim().charAt(0).toUpperCase()}
-              </button>
-            )}
-          </motion.div>
-          {home && <Stepper />}
-        </header>
+            </motion.div>
+            <Stepper />
+          </header>
+        ) : (
+          !online && (
+            <p className="mb-3 flex items-center gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 print:hidden">
+              <WifiOff className="size-3.5" /> Offline · save aur sync net aane pe hoga
+            </p>
+          )
+        )}
 
         <AnimatePresence mode="wait" custom={dir} initial={false}>
           <motion.main
@@ -103,7 +116,9 @@ export default function App() {
             exit="exit"
             transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
           >
-            <Page />
+            <Suspense fallback={<div className="card h-40 animate-pulse" />}>
+              <Page />
+            </Suspense>
           </motion.main>
         </AnimatePresence>
       </div>

@@ -43,7 +43,7 @@ export default function ItemList({ items, onEdit, onDelete }) {
               <p className="truncate font-semibold">{item.name}</p>
               <p className="text-xs text-zinc-500">
                 {item.qty ? `${fmtQty(item.qty)} ${item.unit}` : '—'}
-                {item.rate ? ` × ₹${inr(item.rate)}` : ''}
+                {item.rate ? ` × ₹${inr(item.rate)}${item.rateUnit && item.rateUnit !== item.unit ? `/${item.rateUnit}` : ''}` : ''}
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1.5">

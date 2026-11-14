@@ -23,10 +23,13 @@ import App from './App.jsx'
 import { resetScrollLock } from './utils/scrollLock'
 import { goToLogin } from './utils/api'
 import { loadUser, useSession } from './store/useSession'
-import { hydrateForUser } from './store/useBillStore'
+import { hydrateForUser, useBillStore } from './store/useBillStore'
 import { startSync } from './utils/billSync'
+import { loadMyShop } from './utils/shopSync'
+import { listenForInstall } from './store/useInstall'
 
 resetScrollLock()
+listenForInstall()
 
 // Who is logged in decides whose shop details and draft are loaded, so find out before rendering
 async function boot() {
@@ -35,6 +38,13 @@ async function boot() {
   useSession.getState().setUser(user)
   await hydrateForUser(user.id)
   startSync()
+  loadMyShop().catch(() => {}) // shop details + rate list from the cloud (e.g. on a new phone)
+  // Shared shop link (/?shop=<slug>): open that shop, then tidy the address bar
+  const sharedShop = new URLSearchParams(location.search).get('shop')
+  if (sharedShop) {
+    useBillStore.getState().openShop(sharedShop)
+    history.replaceState(null, '', '/')
+  }
   createRoot(document.getElementById('root')).render(
     <StrictMode>
       <App />

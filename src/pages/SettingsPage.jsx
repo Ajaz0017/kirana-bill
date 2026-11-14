@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { Brain, Check, DatabaseBackup, Download, FileUp, Hash, QrCode, Share2, Stamp, Store } from 'lucide-react'
+import { Brain, Check, ChevronRight, DatabaseBackup, Download, FileUp, Hash, Share2, Stamp, Store } from 'lucide-react'
 import { useBillStore } from '../store/useBillStore'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Toast from '../components/Toast'
@@ -12,13 +12,13 @@ import defaultSignature from '../assets/signature.png'
 const fmtWhen = (iso) =>
   iso ? new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'pata nahi'
 
-// Shop details, payment, numbering, backup: things set once, not per bill
+// Stamp/signature, numbering, backup, scan memory: things set once, not per bill
 export default function SettingsPage() {
   const shopInfo = useBillStore((s) => s.shopInfo)
   const lastInvoiceNo = useBillStore((s) => s.lastInvoiceNo)
   const knownCount = useBillStore((s) => s.knownItems.length)
   const fixCount = useBillStore((s) => Object.keys(s.nameFixes).length)
-  const { setShopInfo, setNextInvoiceNo, clearLearning, restoreBackup } = useBillStore.getState()
+  const { setShopInfo, setTab, setNextInvoiceNo, clearLearning, restoreBackup } = useBillStore.getState()
 
   const [nextNo, setNextNo] = useState(String(lastInvoiceNo + 1))
   // Kept after closing so the dialog text doesn't blank out mid-animation
@@ -34,7 +34,6 @@ export default function SettingsPage() {
   const toastId = useRef(0)
   const say = (text, error = false) => setToast({ id: ++toastId.current, text, error })
 
-  const s = (key) => ({ id: `shop-${key}`, value: shopInfo[key] ?? '', onChange: (e) => setShopInfo({ [key]: e.target.value }) })
 
   const n = parseInt(nextNo, 10)
   const nextValid = Number.isInteger(n) && n >= 1
@@ -81,26 +80,27 @@ export default function SettingsPage() {
         <p className="text-xs text-zinc-500">Ek baar bharein, har bill mein kaam aayega. Badlav apne aap save hote hain.</p>
       </div>
 
-      <Section index={0} icon={Store} title="Aapki dukaan">
-        <Field label="Shop name" placeholder="e.g. Akhlaque Kirana Store" {...s('name')} />
-        <Field label="Address" textarea placeholder="Gali, mohalla, shehar, PIN" {...s('address')} />
-        <Field label="Mobile" type="tel" inputMode="tel" placeholder="98XXXXXXXX" {...s('mobile')} />
-      </Section>
+      {/* Shop name, address, mobile and UPI moved to Shops → Meri Shop (saved to the cloud) */}
+      <button type="button" onClick={() => setTab('shops')}
+        className="card flex w-full items-center gap-3 p-4 text-left">
+        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-600">
+          <Store className="size-4.5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-bold">{shopInfo.name || 'Dukaan ki details'}</span>
+          <span className="block truncate text-xs text-zinc-500">Naam, address, mobile, UPI aur rate list: Shops → Meri Shop</span>
+        </span>
+        <ChevronRight className="size-4 text-zinc-400" />
+      </button>
 
-      <Section index={1} icon={QrCode} title="UPI payment" hint="Bill pe QR banega, scan karte hi amount bhar jayega">
-        <Field label="UPI ID" placeholder="naam@okhdfcbank" autoCapitalize="none" autoCorrect="off" {...s('upiId')} />
-        <Field label="UPI pe naam" placeholder="Jo naam UPI app mein dikhta hai" {...s('upiName')} />
-        <Field label="Pay on mobile no." type="tel" inputMode="tel" placeholder={shopInfo.mobile || 'UPI se juda mobile'} {...s('upiMobile')} />
-      </Section>
-
-      <Section index={2} icon={Stamp} title="Stamp & Signature">
+      <Section index={0} icon={Stamp} title="Stamp & Signature">
         <div className="grid grid-cols-2 gap-3">
           <ImagePick label="Stamp" value={shopInfo.stamp} fallback={defaultStamp} onChange={(v) => setShopInfo({ stamp: v })} />
           <ImagePick label="Signature" value={shopInfo.signature} fallback={defaultSignature} onChange={(v) => setShopInfo({ signature: v })} />
         </div>
       </Section>
 
-      <Section index={3} icon={Hash} title="Invoice number" hint={`Pichhla bill #${lastInvoiceNo || '—'}`}>
+      <Section index={1} icon={Hash} title="Invoice number" hint={`Pichhla bill #${lastInvoiceNo || '—'}`}>
         <div className="flex items-end gap-2">
           <div className="flex-1">
             <Field label="Agla bill number" inputMode="numeric" id="next-invoice" value={nextNo}
@@ -126,7 +126,7 @@ export default function SettingsPage() {
         </button>
       </Section>
 
-      <Section index={4} icon={DatabaseBackup} title="Backup" hint="Phone badle ya data saaf ho jaye, to isse sab wapas aa jayega">
+      <Section index={2} icon={DatabaseBackup} title="Backup" hint="Phone badle ya data saaf ho jaye, to isse sab wapas aa jayega">
         <div className="flex gap-2">
           <button type="button" onClick={() => downloadFile(backupFile())} className={`${canShareFiles ? 'btn-ghost' : 'btn-primary'} flex-1 py-3`}>
             <Download className="size-4" /> Download
@@ -146,7 +146,7 @@ export default function SettingsPage() {
         </p>
       </Section>
 
-      <Section index={5} icon={Brain} title="Scan ki yaaddasht" hint="Scan aapke sudhaar se seekhta hai">
+      <Section index={3} icon={Brain} title="Scan ki yaaddasht" hint="Scan aapke sudhaar se seekhta hai">
         <p className="text-sm text-zinc-600">
           <b>{knownCount}</b> items ke naam aur <b>{fixCount}</b> sudhaar yaad hain.
         </p>

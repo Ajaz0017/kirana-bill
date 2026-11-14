@@ -29,6 +29,7 @@ const rememberNames = (known, names) => {
 const emptyShop = () => ({
   name: '',
   address: '',
+  city: '',
   mobile: '',
   upiId: '',
   upiName: '',
@@ -37,8 +38,11 @@ const emptyShop = () => ({
   signature: 'default',
 })
 
+// Shop fields that live in the cloud shop (stamp/signature stay on the phone: big images)
+export const SHOP_CLOUD_FIELDS = ['name', 'address', 'city', 'mobile', 'upiId', 'upiName', 'upiMobile']
+
 // Bottom navigation, left to right
-export const TABS = ['home', 'bills', 'settings', 'profile']
+export const TABS = ['home', 'bills', 'shops', 'settings', 'profile']
 
 export const useBillStore = create(
   persist(
@@ -60,8 +64,22 @@ export const useBillStore = create(
       knownItems: [],
       nameFixes: {},
 
+      // ---- Own shop (Shops tab). Edited here on the phone, sent to the server with "Save".
+      shopMeta: null, // last saved cloud shop: { slug, isPublic } | null = never saved
+      shopPublic: false, // Private / Public choice (unsaved until Save)
+      shopItems: [], // rate list: { id, name, unit, rate, category, inStock, changedDay }; new items have a local id
+      shopDirty: false, // edits not yet saved to the server
+      // Not persisted: which Shops sub-page is open
+      shopTab: 'mine', // 'mine' | 'public'
+      shopView: null, // slug of a shop opened read-only (public list or a shared link)
+
       goTo: (step) => set((s) => ({ step, dir: step >= s.step ? 1 : -1 })),
-      setTab: (tab) => set((s) => (tab === s.tab ? { viewing: null } : { tab, viewing: null, dir: TABS.indexOf(tab) > TABS.indexOf(s.tab) ? 1 : -1 })),
+      setTab: (tab) =>
+        set((s) =>
+          tab === s.tab
+            ? { viewing: null, shopView: null }
+            : { tab, viewing: null, shopView: null, dir: TABS.indexOf(tab) > TABS.indexOf(s.tab) ? 1 : -1 },
+        ),
       setViewing: (viewing) => set({ viewing, dir: viewing ? 1 : -1 }),
 
       queueBill: (bill) => set((s) => ({ pendingBills: { ...s.pendingBills, [bill.id]: bill } })),
@@ -108,6 +126,24 @@ export const useBillStore = create(
       setDetails: (patch) => set((s) => ({ details: { ...s.details, ...patch } })),
       setShopInfo: (patch) => set((s) => ({ shopInfo: { ...s.shopInfo, ...patch } })),
 
+      // Shop details that are saved to the cloud shop: mark the shop as unsaved
+      editShopInfo: (patch) => set((s) => ({ shopInfo: { ...s.shopInfo, ...patch }, shopDirty: true })),
+      setShopPublic: (shopPublic) => set({ shopPublic, shopDirty: true }),
+      setShopItems: (fn) => set((s) => ({ shopItems: typeof fn === 'function' ? fn(s.shopItems) : fn, shopDirty: true })),
+      setShopTab: (shopTab) => set({ shopTab, shopView: null }),
+      openShop: (slug) => set((s) => ({ tab: 'shops', shopView: slug, viewing: null, dir: s.tab === 'shops' ? 1 : TABS.indexOf('shops') > TABS.indexOf(s.tab) ? 1 : -1 })),
+      closeShop: () => set({ shopView: null, dir: -1 }),
+
+      // The server's copy of the own shop (after loading or saving) replaces the phone's
+      applyCloudShop: ({ shop, items }) =>
+        set((s) => ({
+          shopMeta: shop ? { slug: shop.slug, isPublic: shop.isPublic } : null,
+          shopPublic: shop ? shop.isPublic : s.shopPublic,
+          shopItems: shop ? items : s.shopItems,
+          shopInfo: shop ? { ...s.shopInfo, ...Object.fromEntries(SHOP_CLOUD_FIELDS.map((k) => [k, shop[k] ?? ''])) } : s.shopInfo,
+          shopDirty: false,
+        })),
+
       // Next bill number (e.g. back to 1 for a new year); also renumbers the bill being made now
       setNextInvoiceNo: (n) =>
         set((s) => ({ lastInvoiceNo: n - 1, details: { ...s.details, invoiceNo: String(n) } })),
@@ -119,6 +155,7 @@ export const useBillStore = create(
       restoreBackup: (data) =>
         set((s) => ({
           shopInfo: { ...emptyShop(), ...data.shopInfo },
+          shopDirty: true, // restored shop details still need a Save to reach the cloud shop
           lastInvoiceNo: data.lastInvoiceNo ?? s.lastInvoiceNo,
           knownItems: data.knownItems ?? [],
           nameFixes: data.nameFixes ?? {},
@@ -137,7 +174,14 @@ export const useBillStore = create(
       name: 'kirana-bill', // replaced by a per-user key in hydrateForUser before anything is read
       version: 1,
       skipHydration: true,
-      partialize: ({ step, draftId, pendingBills, items, details, shopInfo, lastInvoiceNo, knownItems, nameFixes }) => ({
+      partialize: ({
+        step, draftId, pendingBills, items, details, shopInfo, lastInvoiceNo, knownItems, nameFixes,
+        shopMeta, shopPublic, shopItems, shopDirty,
+      }) => ({
+        shopMeta,
+        shopPublic,
+        shopItems,
+        shopDirty,
         step,
         draftId,
         pendingBills,

@@ -1,10 +1,11 @@
 import { motion } from 'motion/react'
-import { House, ReceiptText, Settings, UserRound } from 'lucide-react'
+import { House, ReceiptText, Settings, Store, UserRound } from 'lucide-react'
 import { useBillStore } from '../store/useBillStore'
 
 const ITEMS = [
   { tab: 'home', label: 'Home', icon: House },
   { tab: 'bills', label: 'Bills', icon: ReceiptText },
+  { tab: 'shops', label: 'Shops', icon: Store },
   { tab: 'settings', label: 'Settings', icon: Settings },
   { tab: 'profile', label: 'Profile', icon: UserRound },
 ]
@@ -13,6 +14,7 @@ const ITEMS = [
 export default function BottomNav() {
   const tab = useBillStore((s) => s.tab)
   const pending = useBillStore((s) => Object.keys(s.pendingBills).length)
+  const shopUnsaved = useBillStore((s) => s.shopDirty)
   const setTab = useBillStore((s) => s.setTab)
 
   return (
@@ -44,6 +46,9 @@ export default function BottomNav() {
                 <Icon className="relative size-5" strokeWidth={active ? 2.4 : 2} />
                 {t === 'bills' && pending > 0 && (
                   <span className="absolute top-0 right-2 size-2.5 rounded-full bg-amber-500 ring-2 ring-white" title={`${pending} bill sync baaki`} />
+                )}
+                {t === 'shops' && shopUnsaved && (
+                  <span className="absolute top-0 right-2 size-2.5 rounded-full bg-amber-500 ring-2 ring-white" title="Shop save baaki" />
                 )}
               </span>
               {label}

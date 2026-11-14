@@ -24,6 +24,16 @@ export async function billToPdf(node, fileName) {
   return new File([pdf.output('blob')], fileName, { type: 'application/pdf' })
 }
 
+/** Snapshot a node as a JPEG file (for sharing a rate list as a picture on WhatsApp) */
+export async function nodeToImage(node, fileName) {
+  const { toBlob } = await import('html-to-image')
+  const width = node.offsetWidth
+  const height = node.offsetHeight
+  const pixelRatio = Math.min(2, Math.sqrt(MAX_PIXELS / (width * height)))
+  const blob = await toBlob(node, { width, height, pixelRatio, type: 'image/jpeg', quality: 0.92, backgroundColor: '#ffffff' })
+  return new File([blob], fileName, { type: 'image/jpeg' })
+}
+
 export function downloadFile(file) {
   const url = URL.createObjectURL(file)
   const a = document.createElement('a')

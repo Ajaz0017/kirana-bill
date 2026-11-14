@@ -139,7 +139,7 @@ const BillTable = forwardRef(function BillTable({ items, details, shopInfo, tota
               <Cell className="w-[11%] text-[14px] font-bold tabular-nums">{item.qty ? fmtQty(item.qty) : ''}</Cell>
               <Cell className="w-[8%] text-[13px] font-bold">{item.qty ? item.unit : ''}</Cell>
               <Cell className="w-[13%] text-[14px] font-bold tabular-nums">{item.rate ? inr(item.rate) : ''}</Cell>
-              <Cell className="w-[9%] text-[13px] font-bold">{item.rate ? item.unit : ''}</Cell>
+              <Cell className="w-[9%] text-[13px] font-bold">{item.rate ? (item.rateUnit ?? item.unit) : ''}</Cell>
               <Cell className="font-semibold tabular-nums">{inr(item.amount)}</Cell>
             </tr>
           ))}

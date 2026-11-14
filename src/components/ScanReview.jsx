@@ -1,21 +1,25 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Camera, CheckCheck, LoaderCircle, Sparkles, TriangleAlert, X } from 'lucide-react'
+import { Camera, CheckCheck, LoaderCircle, Sparkles, Store, TriangleAlert, X } from 'lucide-react'
 import { UNITS } from '../constants'
-import { cleanDecimal, fmtQty, inr, round } from '../utils/format'
+import { cleanDecimal, fmtQty, inr } from '../utils/format'
+import { convertQty, lineAmount, sameFamily } from '../utils/units'
 import BottomSheet from './BottomSheet'
 
 const isValid = (r) => r.name.trim() && parseFloat(r.amount) > 0
 
-// Same Qty × Rate = Amount rule as ItemForm
+// Same Qty × Rate = Amount rule as ItemForm; the rate may be per a bigger unit (250 gm @ ₹70/kg)
 function recalc(row, field, raw) {
   const value = field === 'name' || field === 'unit' ? raw : cleanDecimal(raw)
   const next = { ...row, [field]: value, uncertain: false }
-  const qty = parseFloat(next.qty)
+  if (field === 'unit' && !sameFamily(value, next.rateUnit ?? value)) next.rateUnit = value
+  const rateUnit = next.rateUnit ?? next.unit
   const rate = parseFloat(next.rate)
   const amount = parseFloat(next.amount)
-  if ((field === 'qty' || field === 'rate') && qty > 0 && rate > 0) next.amount = String(round(qty * rate))
-  else if (field === 'amount' && rate > 0 && amount > 0) next.qty = fmtQty(amount / rate)
+  if (field === 'qty' || field === 'rate' || field === 'unit') {
+    const a = lineAmount(next.qty, next.unit, next.rate, rateUnit)
+    if (a != null) next.amount = String(a)
+  } else if (field === 'amount' && rate > 0 && amount > 0) next.qty = fmtQty(convertQty(amount / rate, rateUnit, next.unit))
   return next
 }
 
@@ -42,7 +46,7 @@ const Row = ({ row, index, onChange, onRemove }) => {
         <select className="field appearance-none px-2.5 py-2" aria-label="Unit" value={row.unit} onChange={set('unit')}>
           {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
         </select>
-        <input className="field px-2.5 py-2" inputMode="decimal" placeholder="Rate" aria-label="Rate" value={row.rate} onChange={set('rate')} />
+        <input className="field px-2.5 py-2" inputMode="decimal" placeholder={`₹/${row.rateUnit ?? row.unit}`} aria-label={`Rate per ${row.rateUnit ?? row.unit}`} value={row.rate} onChange={set('rate')} />
         <input className="field px-2.5 py-2 font-bold" inputMode="decimal" placeholder="₹" aria-label="Amount" value={row.amount} onChange={set('amount')} />
       </div>
       {row.autoFixed && row.name === row.suggested && (
@@ -53,6 +57,11 @@ const Row = ({ row, index, onChange, onRemove }) => {
             className="shrink-0 font-semibold text-violet-600 underline underline-offset-2">
             Wahi rakhein
           </button>
+        </p>
+      )}
+      {row.shopRate && parseFloat(row.rate) > 0 && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-violet-700">
+          <Store className="size-3.5" /> Rate nahi likha tha, shop ka rate lagaya (₹{inr(row.rate)}/{row.rateUnit ?? row.unit})
         </p>
       )}
       {row.uncertain && (

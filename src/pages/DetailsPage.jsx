@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowLeft, ChevronRight, FileText, Settings, Store, UserRound } from 'lucide-react'
+import { ArrowLeft, ChevronRight, FileText, Store, UserRound } from 'lucide-react'
 import { useBillStore } from '../store/useBillStore'
 import BottomBar from '../components/BottomBar'
 import { Field, Section } from '../components/FormBits'
@@ -40,8 +40,8 @@ export default function DetailsPage() {
         <Field label="Mobile" type="tel" inputMode="tel" placeholder="Optional" {...d('customerMobile')} />
       </Section>
 
-      {/* Shop details live in Settings; this just shows which shop the bill is from */}
-      <motion.button type="button" onClick={() => setTab('settings')} whileTap={{ scale: 0.98 }}
+      {/* Shop details live in Shops → Meri Shop; this just shows which shop the bill is from */}
+      <motion.button type="button" onClick={() => setTab('shops')} whileTap={{ scale: 0.98 }}
         initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}
         className={`card flex w-full items-center gap-3 p-4 text-left ${touched && missing.shopName ? 'ring-2 ring-rose-400' : ''}`}>
         <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-violet-100 text-violet-600">
@@ -51,7 +51,7 @@ export default function DetailsPage() {
           {shopInfo.name ? (
             <>
               <span className="block truncate font-bold">{shopInfo.name}</span>
-              <span className="block truncate text-xs text-zinc-500">Dukaan, UPI, stamp: Settings mein badlein</span>
+              <span className="block truncate text-xs text-zinc-500">Dukaan aur UPI: Shops → Meri Shop mein badlein</span>
             </>
           ) : (
             <>
@@ -60,7 +60,6 @@ export default function DetailsPage() {
             </>
           )}
         </span>
-        <Settings className="size-4 text-zinc-400" />
         <ChevronRight className="size-4 text-zinc-400" />
       </motion.button>
 
